@@ -26,17 +26,15 @@ import inspect
 import labrad
 
 debug = True
-def sqr(a): return a*a
 
+def sqr(a): return a*a
 class wavemeterwidget(QtGui.QMainWindow):
     
     def __init__(self):
         super(wavemeterwidget,self).__init__()
         if not debug:
             self.wavemeter = wlm()
-        self.settings = QSettings('settings.ini',QSettings.IniFormat)
         self.setWindowTitle("Wavemeter widget")
-        self.settings.setFallbacksEnabled(False)
         self.timer = QTimer()    
         self.timer.timeout.connect(self.update)
         self.debugint = 0
@@ -130,6 +128,8 @@ class wavemeterwidget(QtGui.QMainWindow):
         settings = QSettings('settings.ini',QSettings.IniFormat)
         settings.setFallbacksEnabled(False)
 
+        self.setStyleSheet(settings.value('Theme').toString())
+
         for aspinbox in self.findChildren(QtGui.QDoubleSpinBox) + self.findChildren(QtGui.QSpinBox):
             name = aspinbox.objectName()
             value= settings.value(name).toFloat()[0]
@@ -197,6 +197,7 @@ class wavemeterwidget(QtGui.QMainWindow):
 
         for awidget in QtGui.QApplication.instance().topLevelWidgets():
             awidget.close()
+        settings.setValue('Theme',self.styleSheet())
 
 
     ########################################################
@@ -1108,7 +1109,8 @@ class readingsbox(QtGui.QFrame):
     def resizeEvent(self, event):
         #--- fetch current parameters ----
         f = self.reading.font()
-        cr = self.reading.contentsRect()
+        crheight = self.reading.contentsRect().height()*0.95
+        crwidth = self.reading.contentsRect().width()*0.95
         #--- iterate to find the font size that fits the contentsRect ---
         dw = event.size().width() - event.oldSize().width()   # width change
         dh = event.size().height() - event.oldSize().height() # height change
@@ -1118,13 +1120,13 @@ class readingsbox(QtGui.QFrame):
             f.setPixelSize(fs)
             br =  QtGui.QFontMetrics(f).boundingRect(self.reading.text())
             if dw >= 0 and dh >= 0: # label is expanding
-                if br.height() <= cr.height() and br.width() <= cr.width():
+                if br.height() <= crheight and br.width() <= crwidth:
                     fs += 1
                 else:
                     f.setPixelSize(max(fs - 1, 1)) # backtrack
                     break                    
             else: # label is shrinking
-                if br.height() > cr.height() or br.width() > cr.width():
+                if br.height() > crheight  or br.width() > crwidth:
                     fs -= 1
                 else:
                     break
@@ -1267,3 +1269,4 @@ if __name__=="__main__":
     a = QtGui.QApplication( [] )
     pl = wavemeterwidget()
     sys.exit(a.exec_())
+
