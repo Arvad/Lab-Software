@@ -25,9 +25,8 @@ import datetime
 import inspect
 import labrad
 
-debug = False
-
-
+debug = True
+def sqr(a): return a*a
 
 class wavemeterwidget(QtGui.QMainWindow):
     
@@ -624,7 +623,7 @@ class wavemeterwidget(QtGui.QMainWindow):
             self.logfile = open("./wavemeterlogging/"+fname,'w')
             string = "Timestamp,"
             for i in range(8):
-                string += "Chan{:} Freq[THz],Chan{:} Reg [mV],".format(i+1,i+1)
+                string += "Chan{0} Avg Freq[THz],Chan{0} std Freq[THz],Chan{0} Avg Reg [mV],Chan{0} std Reg [mV]".format(i+1,i+1)
             self.logfile.write(string + "\n")
             sender.setText('Stop logging')
             fnamefield.setReadOnly(True)
@@ -685,8 +684,18 @@ class wavemeterwidget(QtGui.QMainWindow):
                 self.debugint += 0.001
             
             if used and updated:
+                channel.sumfreq += freq
+                channel.sumsquarefreq += sqr(freq)
+                channel.sumsig += sig
+                channel.sumsquaresig += sqr(sig)
+                channel.sumint += 1
+                freqavg = channel.sumfreq/float(channel.sumint)
+                freqstd = np.sqrt(channel.sumsquarefreq/float(channel.sumint)-sqr(freqavg))
+                sigavg = channel.sumsig/float(channel.sumint)
+                sigstd = np.sqrt(channel.sumsquaresig/float(channel.sumint)-sqr(sigavg))
+
                 if channel.logging:
-                    logstring += "{:},{:},".format(freq,sig)
+                    logstring += "{:},{:},{:},{:}".format(freqavg,freqstd,sigavg,sigstd)
                 else:
                     logstring += ",,"
 
@@ -697,6 +706,9 @@ class wavemeterwidget(QtGui.QMainWindow):
                     channel.freqmin,channel.freqmax = [freq,freq]
                     channel.sigmin,channel.sigmax = [sig,sig]
                     channel.newminmax = False
+                    channel.sumfreq = 0.0; channel.sumsig = 0.0
+                    channel.sumsquarefreq = 0.0; channel.sumsquaresig = 0.0
+                    channel.sumint = 0
                 else: # Else update the minmax values
                     channel.freqmin = min(freq,channel.freqmin)
                     channel.freqmax = max(freq,channel.freqmax)
@@ -858,6 +870,10 @@ class channelinformation:
         self.freqmin = 0; self.freqmax = 0; self.sigmin = 0; self.sigmax = 0;
         #Mimimum/maximum limits
         self.freqlimmin = 0; self.freqlimmax = 0; self.siglimmin = 0; self.siglimmax = 0
+        #for average determination
+        self.sumfreq = 0 ; self.sumsig = 0;
+        self.sumsquarefreq = 0; self.sumsquaresig = 0;
+        self.sumint = 0
 
         #PID variables
         self.pvalue = 0; self.ivalue = 0; self.dvalue = 0
