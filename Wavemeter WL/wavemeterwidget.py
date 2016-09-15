@@ -128,8 +128,6 @@ class wavemeterwidget(QtGui.QMainWindow):
         settings = QSettings('settings.ini',QSettings.IniFormat)
         settings.setFallbacksEnabled(False)
 
-        self.setStyleSheet(settings.value('Theme').toString())
-
         for aspinbox in self.findChildren(QtGui.QDoubleSpinBox) + self.findChildren(QtGui.QSpinBox):
             name = aspinbox.objectName()
             value= settings.value(name).toFloat()[0]
@@ -696,9 +694,9 @@ class wavemeterwidget(QtGui.QMainWindow):
                 sigstd = np.sqrt(channel.sumsquaresig/float(channel.sumint)-sqr(sigavg))
 
                 if channel.logging:
-                    logstring += "{:},{:},{:},{:}".format(freqavg,freqstd,sigavg,sigstd)
+                    channel.logstring = "{:},{:},{:},{:},".format(freqavg,freqstd,sigavg,sigstd)
                 else:
-                    logstring += ",,"
+                    channel.logstring = ", , , , ,"
 
                 ########################################################
                 #######    Update minmax values
@@ -792,6 +790,8 @@ class wavemeterwidget(QtGui.QMainWindow):
         if not self.expotimereading.isHidden():
             self.expotimereading.update_reading(totalexptime)
         if plotupdate and self.logfile is not None:
+            for achannel in self.channellist:
+                logstring += achannel.logstring
             self.logfile.write(logstring + "\n")
 
 
