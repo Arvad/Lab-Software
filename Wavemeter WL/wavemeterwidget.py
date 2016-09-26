@@ -28,6 +28,33 @@ import labrad
 debug = True
 
 def sqr(a): return a*a
+
+def buttonstyle(color):
+    str = ["QPushButton {\n"
+"color: black;\n"
+"border: 2px solid #555;\n"
+"border-radius: 11px;\n"
+"padding: 5px;\n"
+"background: qradialgradient(cx: 0.3, cy: -0.4,\n"
+"fx: 0.3, fy: -0.4,\n"
+"radius: 1.35, stop: 0 light{:}, stop: 1 {:});\n".format(color,color)
+"min-width: 80px;\n"
+"max-width: 80px;\n"
+"}\n"
+"\n"
+"QPushButton:hover {\n"
+"background: qradialgradient(cx: 0.4, cy: 0.5,\n"
+"fx: 0.3, fy: -0.4,\n"
+"radius: 1.35, stop: 0 red, stop: 1 lightred);\n"
+"}\n"
+"\n"
+"QPushButton:checked {\n"
+"background: qradialgradient(cx: 0.4, cy: -0.1,\n"
+"fx: 0.4, fy: -0.1,\n"
+"radius: 1.35, stop: 0 red, stop: 1 darkred);\n"
+"}"]
+
+
 class wavemeterwidget(QtGui.QMainWindow):
     
     def __init__(self):
@@ -219,6 +246,11 @@ class wavemeterwidget(QtGui.QMainWindow):
      
     #Resets all plots   
     def resetall_pressed(self):
+        quit_msg = "Are you sure you want to reset all graphs?"
+        reply = QtGui.QMessageBox.question(self, 'Reset Graphs', 
+        quit_msg, QtGui.QMessageBox.Yes, QtGui.QMessageBox.No)
+        if reply == QtGui.QMessageBox.No:
+            return
         for i in self.channellist:
             i.plotwidget.reset_plots()
 
