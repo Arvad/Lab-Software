@@ -174,6 +174,11 @@ class wavemeterwidget(QtGui.QMainWindow):
 
             aspinbox.setValue(value)
 
+        for aBox in self.findChildren(QtGui.QComboBox):
+            name = aBox.objectName()
+            value = settings.value(name).toInt()[0]
+            aBox.setCurrentIndex(value)
+
         readingslist = ["Readingsaction{:}".format(i) for i in range(8)]
         plotslist = ["Plotsaction{:}".format(i) for i in range(8)]
         for anAction in self.findChildren(QtGui.QAction):
@@ -231,6 +236,12 @@ class wavemeterwidget(QtGui.QMainWindow):
             name = aBox.objectName()
             state = aBox.isChecked()
             settings.setValue(name,state)
+
+        for aBox in self.findChildren(QtGui.QComboBox):
+            name = aBox.objectName()
+            state = aBox.currentIndex()
+            settings.setValue(name,state)
+            
         settings.sync()
 
         for awidget in QtGui.QApplication.instance().topLevelWidgets():
@@ -541,12 +552,12 @@ class wavemeterwidget(QtGui.QMainWindow):
             senslabel = QtGui.QLabel('Sensitivity')
             senslabel2 = QtGui.QLabel('(V/GHz)')
             targetvalue = QtGui.QDoubleSpinBox()
-            pvalue = QtGui.QDoubleSpinBox()
-            ivalue = QtGui.QDoubleSpinBox()
-            dvalue = QtGui.QDoubleSpinBox()
+            pvalue = QtGui.QSpinBox()
+            ivalue = QtGui.QSpinBox()
+            dvalue = QtGui.QSpinBox()
             sensitivity = QtGui.QDoubleSpinBox()
             outputchannel = QtGui.QSpinBox()
-            regulate = QtGui.QCheckBox("Chan {:}".format(i+1))
+            regulate = QtGui.QPushButton("Chan {:}".format(i+1))
             steplimitvalue = QtGui.QSpinBox()
             steplimitlabel = QtGui.QLabel('Steplimit')
             polaritylabel = QtGui.QLabel('Polarity')
@@ -554,6 +565,7 @@ class wavemeterwidget(QtGui.QMainWindow):
             #Modify elements
             targetvalue.setDecimals(6)
             targetvalue.setRange(0,1000)
+            targetvalue.setSingleStep(0.000001)
             outputchannel.setRange(1,8)
             outputchannel.setValue(i+1)
             steplimitvalue.setRange(1,1000)
@@ -562,7 +574,11 @@ class wavemeterwidget(QtGui.QMainWindow):
             steplimitvalue.setValue(10)
             polaritysign.addItems(['Neg','Pos'])
             for abox in [pvalue, ivalue, dvalue]:
-                abox.setSingleStep(0.1)
+                abox.setSingleStep(5)
+                abox.setRange(0,500)
+            regulate.setStyleSheet(buttonstyle('green'))
+            regulate.setCheckable(True)
+            regulate.setChecked(False)
             pvalue.setObjectName('Channel{:}pvalue'.format(i+1))
             ivalue.setObjectName('Channel{:}ivalue'.format(i+1))
             dvalue.setObjectName('Channel{:}dvalue'.format(i+1))
@@ -578,8 +594,8 @@ class wavemeterwidget(QtGui.QMainWindow):
             dvalue.valueChanged.connect(lambda val, who=i: setattr(self.channellist[who],'dvalue',val))
             targetvalue.valueChanged.connect(lambda val, who=i: setattr(self.channellist[who],'targetvalue',val))
             sensitivity.valueChanged.connect(lambda val, who=i: setattr(self.channellist[who],'sensitivity',val))
-            regulate.stateChanged.connect(lambda state, who=i: self.regulate_toggled(state,who))
-            steplimitvalue.valueChanged.connect(lambda val, who=i: setattr(self.channellist[who],'steplimitvalue',val/100.))
+            regulate.toggled.connect(lambda state, who=i: self.regulate_toggled(state,who))
+            steplimitvalue.valueChanged.connect(lambda val, who=i: setattr(self.channellist[who],'steplimitvalue',val))
             polaritysign.currentIndexChanged.connect(lambda val,who=i: setattr(self.channellist[who],"pospolarity",val))
             # Add to layout grid
             framelayout.addWidget(targetlabel,0,1)
