@@ -29,30 +29,34 @@ debug = True
 
 def sqr(a): return a*a
 
-def buttonstyle(color):
-    str = ["QPushButton {\n"
-"color: black;\n"
-"border: 2px solid #555;\n"
-"border-radius: 11px;\n"
-"padding: 5px;\n"
-"background: qradialgradient(cx: 0.3, cy: -0.4,\n"
-"fx: 0.3, fy: -0.4,\n"
-"radius: 1.35, stop: 0 light{:}, stop: 1 {:});\n".format(color,color)
-"min-width: 80px;\n"
-"max-width: 80px;\n"
-"}\n"
-"\n"
-"QPushButton:hover {\n"
-"background: qradialgradient(cx: 0.4, cy: 0.5,\n"
-"fx: 0.3, fy: -0.4,\n"
-"radius: 1.35, stop: 0 red, stop: 1 lightred);\n"
-"}\n"
-"\n"
-"QPushButton:checked {\n"
-"background: qradialgradient(cx: 0.4, cy: -0.1,\n"
-"fx: 0.4, fy: -0.1,\n"
-"radius: 1.35, stop: 0 red, stop: 1 darkred);\n"
-"}"]
+def buttonstyle(color, **kwargs):
+    if 'textcolor' in kwargs:
+        txtcolor = kwargs['textcolor']
+    else:
+        txtcolor = 'black'
+    backgroundcolor = QtGui.QColor(color)    
+    string =  "QPushButton {\n"
+    string +="color: {:};\n".format(txtcolor)
+    string +="border: 2px ;\n"
+    string +="border-radius: 5px;\n"
+    string +="padding: 5px;\n"
+    string +="background: qradialgradient(cx: 0.3, cy: -0.4,\n"
+    string +="fx: 0.3, fy: -0.4,\n"
+    string +="radius: 1.35, stop: 0 {:}, stop: 1 {:});\n".format(backgroundcolor.name(),backgroundcolor.darker().name())
+    string +="min-width: 80px;\n"
+    string +="max-width: 80px;\n"
+    string +="}\n"
+    string +="\n"
+    string +="QPushButton:hover {\n"
+    string +="background: qradialgradient(cx: 0.4, cy: 0.5,\n"
+    string +="fx: 0.3, fy: -0.4,\n"
+    string +="radius: 1.35, stop: 0 {:}, stop: 1 {:});\n".format(backgroundcolor.name(),backgroundcolor.lighter().name())
+    string +="}\n"
+    string +="\n"
+    string +="QPushButton:checked {\n"
+    string +="background: {:}\n".format(backgroundcolor.lighter().name())
+    string +="}"
+    return string
 
 
 class wavemeterwidget(QtGui.QMainWindow):
@@ -78,6 +82,7 @@ class wavemeterwidget(QtGui.QMainWindow):
         for i in range(8):
             self.channellist.append(channelinformation(i+1))
         self.initialize()
+        self.setStyleSheet(buttonstyle('deepskyblue'))
             
     #Creating the different GUI elements of the main window and joining them together
     def initialize(self):
@@ -105,6 +110,14 @@ class wavemeterwidget(QtGui.QMainWindow):
         self.warningtext = QtGui.QTextEdit()
         self.warningtext.setMaximumHeight(resetwarningbutton.sizeHint().height()*3)
         self.warningtext.setReadOnly(True)
+        startbutton.setCheckable(True)
+        startbutton.setChecked(False)
+        stopbutton.setCheckable(True)
+        stopbutton.setChecked(True)
+        startbutton.setStyleSheet(buttonstyle('green'))
+        stopbutton.setStyleSheet(buttonstyle('red',textcolor = 'white'))
+        stopbutton.clicked.connect(lambda bool: startbutton.setChecked(not startbutton.isChecked()))
+        startbutton.clicked.connect(lambda bool: stopbutton.setChecked(not stopbutton.isChecked()))
 
         panellayout = QtGui.QGridLayout()
         panellayout.addWidget(logwarning,0,0,1,1)
