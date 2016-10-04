@@ -170,14 +170,15 @@ class wavemeterwidget(QtGui.QMainWindow):
 
         for aspinbox in self.findChildren(QtGui.QDoubleSpinBox) + self.findChildren(QtGui.QSpinBox):
             name = aspinbox.objectName()
-            value= settings.value(name).toFloat()[0]
-
-            aspinbox.setValue(value)
+            if settings.contains(name):
+                value= settings.value(name).toFloat()[0]
+                aspinbox.setValue(value)
 
         for aBox in self.findChildren(QtGui.QComboBox):
             name = aBox.objectName()
-            value = settings.value(name).toInt()[0]
-            aBox.setCurrentIndex(value)
+            if settings.contains(name):
+                value = settings.value(name).toInt()[0]
+                aBox.setCurrentIndex(value)
 
         readingslist = ["Readingsaction{:}".format(i) for i in range(8)]
         plotslist = ["Plotsaction{:}".format(i) for i in range(8)]
