@@ -25,7 +25,7 @@ import datetime
 import inspect
 import labrad
 
-debug = True
+debug = False
 
 def sqr(a): return a*a
 
@@ -170,15 +170,13 @@ class wavemeterwidget(QtGui.QMainWindow):
 
         for aspinbox in self.findChildren(QtGui.QDoubleSpinBox) + self.findChildren(QtGui.QSpinBox):
             name = aspinbox.objectName()
-            if settings.contains(name):
-                value= settings.value(name).toFloat()[0]
-                aspinbox.setValue(value)
+            value= settings.value(name).toDouble()[0]
+            aspinbox.setValue(value)
 
         for aBox in self.findChildren(QtGui.QComboBox):
             name = aBox.objectName()
-            if settings.contains(name):
-                value = settings.value(name).toInt()[0]
-                aBox.setCurrentIndex(value)
+            value = settings.value(name).toInt()[0]
+            aBox.setCurrentIndex(value)
 
         readingslist = ["Readingsaction{:}".format(i) for i in range(8)]
         plotslist = ["Plotsaction{:}".format(i) for i in range(8)]
@@ -223,6 +221,7 @@ class wavemeterwidget(QtGui.QMainWindow):
 
     def closeEvent(self,event):
         settings = QSettings('settings.ini',QSettings.IniFormat)
+        settings.setFallbacksEnabled(False)
         for aspinbox in self.findChildren(QtGui.QDoubleSpinBox) + self.findChildren(QtGui.QSpinBox):
             name = aspinbox.objectName()
             value= aspinbox.value()
@@ -651,10 +650,12 @@ class wavemeterwidget(QtGui.QMainWindow):
                         
     # activates or disactivates regulation, also clears the integrator                  
     def regulate_toggled(self,state,num):
-        self.channellist[num].regulate = True if state == 2 else False
+        self.channellist[num].regulate = state
         self.channellist[num].lasterror = 0
         self.channellist[num].integratederror = 0
         self.channellist[num].regulationsignal = 0
+        if state == 0:
+            self.wavemeter.setRegulation(self.channellist[num].channel,0)
     
     # Changes the updatespeed  (updates from the wavemeter)     
     def updatevalue_changed(self,newvalue):
@@ -1331,4 +1332,3 @@ if __name__=="__main__":
     a = QtGui.QApplication( [] )
     pl = wavemeterwidget()
     sys.exit(a.exec_())
-
