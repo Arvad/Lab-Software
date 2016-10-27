@@ -2,7 +2,7 @@ const int PLL_LOCK = 7;
 const int IO_UPDATE = 8;
 const int IO_RESET = 9;
 const int MASTER_RESET = 10;
-const int SCLK = 10;
+const int SCLK = 13;
 const int SDIO = 11;
 const int SDO = 12;
 
@@ -26,22 +26,37 @@ void setup() {
     pinMode(MASTER_RESET, OUTPUT);
     pinMode(SCLK, OUTPUT);
     pinMode(SDIO, OUTPUT);
-    pinMode(SS, OUTPUT);
 
     pinMode(PLL_LOCK, INPUT);
-    pinMode(SDO, INPUT);
 
-    SPI.beginTransaction(SPISettings(16000000,MSBFIRST,SPI_MODE0));
+    Serial.begin(19200);
     
-    //Setup onedirectional communication (3 wire setup)
-    byte addr = byte(0);
-    SPI.transfer(addr);
-    SPI.transfer(byte(0)); //bits 31-24
-    SPI.transfer(byte(0)); //bits 23-16
-    SPI.transfer(byte(0)); //bits 15-8
-    SPI.transfer(byte(2)); //bits 7-0
+    SPI.beginTransaction(SPISettings(50000,MSBFIRST,SPI_MODE0));
 
-    Serial.begin(9600);
+    Reset_chip();
+    
+    //byte addr = byte(0x0E);
+    //SPI.transfer(addr);
+    //SPI.transfer(byte(0xFF)); //bits 63-56
+    //SPI.transfer(byte(0xFF)); //bits 55-48
+    //SPI.transfer(byte(0x00)); //bits 47-40
+    //SPI.transfer(byte(0x00)); //bits 39-32
+    //SPI.transfer(byte(0x4C)); //bits 31-24
+    //SPI.transfer(byte(0x0B)); //bits 23-16
+    //SPI.transfer(byte(0x78)); //bits 15-8
+    //SPI.transfer(byte(0x03)); //bits 7-0
+    //Update_io();
+
+    Serial.write("DONE\n");
+
+  //  char data = SPI.transfer(byte(135));
+   // Serial.write(data);
+    //char data = SPI.transfer(byte(135));
+    //Serial.write(data)
+    //char data = SPI.transfer(byte(135));
+    //Serial.write(data)
+    //char data = SPI.transfer(byte(135));
+    //Serial.write(data)    
 }
 
 
@@ -50,13 +65,15 @@ void loop() {
         inChar = Serial.read();
         switch (inChar) {
             case 'U':{
-                UPDATE();
+                Update_io();
                 counter = 0;
+                Serial.write("U.\n");
                 break;
             }
             case 'S':{
-                RESET();
+                Reset_io();
                 counter = 0;
+                Serial.write("S.\n");
                 break;
             }
             case 'W':{
@@ -66,7 +83,7 @@ void loop() {
             }
             case 'R':{
                 reading = true;
-                counter = 0;
+                counter = 0;             
                 break;
             }
             case 'E':{
@@ -92,10 +109,10 @@ void loop() {
             default:{
                 bytearr[counter] = inChar;
                 counter++;    
-                if (counter >= 1){
+                if (counter >= 2){
                     fullbyte = (int) strtol(bytearr,NULL,16);
                     if (echo){
-                        Serial.write(fullbyte);  
+                        Serial.write(bytearr);  
                     }
                     else{
                         SPI.transfer(byte(fullbyte));
@@ -108,28 +125,60 @@ void loop() {
     }   
 }
 
-
-void writeToChip(byte addr, byte data[],int length){
-    SPI.transfer(addr);
-    for (int i = 0; i < length; i++){
-        SPI.transfer(data[i]);
-    }
+void serial_write(byte data){
+  Serial.write(((data>>4) & 15) + '0');
+  Serial.write((data & 15) + '0');
+  Serial.write('\n');
 }
 
-void UPDATE(){
+void Update_io(){
     digitalWrite(IO_UPDATE, HIGH);
     delay(1);
     digitalWrite(IO_UPDATE, LOW);
 }
 
-void RESET(){
+void Reset_chip(){
+
+    digitalWrite(MASTER_RESET, HIGH);
+    delay(1);
+    digitalWrite(MASTER_RESET, LOW);
+    Reset_io();
+    
+    //Setup onedirectional communication (3 wire setup)
+    byte addr = byte(0x00);
+    SPI.transfer(addr);
+    SPI.transfer(byte(0x40)); //bits 31-24
+    SPI.transfer(byte(0x00)); //bits 23-16
+    SPI.transfer(byte(0x00)); //bits 15-8
+    SPI.transfer(byte(0x02)); //bits 7-0
+    Update_io();
+    
+    Reset_io();
+    addr = byte(0x02);
+    SPI.transfer(addr);
+    SPI.transfer(B00000011); //bits 31-24
+    SPI.transfer(B00111000); //bits 23-16
+    SPI.transfer(B11000001); //bits 15-8
+    SPI.transfer(B11011100); //bits 7-0
+    
+    Update_io();
+
+
+}
+
+void Reset_io(){
     digitalWrite(IO_RESET, HIGH);
     delay(1);
     digitalWrite(IO_RESET, LOW);
+
 }
 
 void read_PLLlock(){
-    int val = digitalRead(PLL_LOCK)
-    Serial.write(val)
-    Serial.write('\n')
+    int val = digitalRead(PLL_LOCK);
+    if (val > 0){
+      Serial.write("1P.\n");
+    }
+    else{
+      Serial.write("0P.\n");
+    }
 }

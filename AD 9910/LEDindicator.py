@@ -1,9 +1,10 @@
 from PyQt4 import QtGui
 from PyQt4.QtCore import Qt
 class LEDindicator(QtGui.QFrame):
-    def __init__(self,name,state=False):
+    def __init__(self,name,state=False,offcolor = 'lightGray'):
         super(LEDindicator, self).__init__()
         self.led = QtGui.QWidget()
+        self.offcolor = offcolor
         self.led.setAutoFillBackground(True)
         #self.setFrameStyle(1)
         self.label = QtGui.QLabel(name)
@@ -43,7 +44,7 @@ class LEDindicator(QtGui.QFrame):
     def setOff(self):
         self.State = False
         pal = QtGui.QPalette()
-        pal.setColor(self.led.backgroundRole(), Qt.lightGray)
+        pal.setColor(self.led.backgroundRole(), QtGui.QColor(self.offcolor))
         self.led.setPalette(pal)
     
     #def resizeEvent(self,event):
