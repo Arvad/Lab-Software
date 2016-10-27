@@ -30,26 +30,38 @@ class AD9910(LabradServer):
 
     
 
-    @inlineCallbacks
+    
     def setup(self):
-        self.ser = yield self.serial_connection()
+        self.ser =self.serial_connection()
         #Setup PLL lock
         data = ''
         data += 'W' #Mode
-        data += '03' #Address
-        data += '{:02x}'.format(0b11001000) # 31-24
-        data += '{:02x}'.format(0b01000001) # 23-16
-        data += '{:02x}'.format(0b00111000) # 15- 8
-        data += '{:02x}'.format(0b00010011) #  7- 0
+        data += '{:02x}'.format(0b00000010) #Address
+        data += '{:02x}'.format(0b00000011) # 31-24
+        data += '{:02x}'.format(0b00111000) # 23-16
+        data += '{:02x}'.format(0b00000001) # 15- 8
+        data += '{:02x}'.format(0b11011100) #  7- 0
         data += '\r'
-
-        yield serial.write(data)
-
-    def serial_connection(self,c):
-        try:
-            ser = serial.Serial('COM',9600)
-        except Exception,e:
-            print e
+        print data
+        self.ser.write(data)
+        self.ser.write('U\r')
+        #data = yield self.ser.read(3)
+        #print data
+        data = ''
+        data += 'W' #Mode
+        data += '{:02x}'.format(0b00000111) #Address
+        data += '{:02x}'.format(0b01010101) # 31-24
+        data += '{:02x}'.format(0b11111111) # 23-16
+        data += '{:02x}'.format(0b11111111) # 15- 8
+        data += '{:02x}'.format(0b01010101) #  7- 0
+        data += '\r'
+        self.ser.write(data)
+        self.ser.write('U\r')
+        print data
+        #data = yield self.ser.read(3)
+        #print data
+    def serial_connection(self):
+        ser = serial.Serial('COM3',9600,timeout=1)
         return ser
 
 
@@ -63,7 +75,7 @@ class AD9910(LabradServer):
         data += '\r'
         self.ser.write(data)
         self.ser.write('U\r')
-
+        return self.ser.read(3)
     @setting(2, 'Read serial', returns='s')
     def read_serial(self,c):
         length = self.ser.in_waiting()
@@ -80,12 +92,24 @@ class AD9910(LabradServer):
     @setting(3, 'Read PLL', returns='s')
     def read_pll(self,c):
         self.ser.write('P')
-        data =self.ser.read(2)
+        data =self.ser.read(4)
         return data
 
-
-
-
+    @setting(4, 'Write to register')
+    def write_to_register(self,c,data):
+        self.ser.write(data)
+        return self.ser.read()
+    
+    @setting(5, 'Update IO')
+    def update_IO(self,c):
+        self.ser.write('U\r')
+        return self.ser.read(3)
+    
+    @setting(6, 'Reset IO')
+    def reset_IO(self,c):
+        self.ser.write('S\r')
+        return self.ser.read(3)
+    
 if __name__ == "__main__":
     from labrad import util
     util.runServer(AD9910())
