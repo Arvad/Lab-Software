@@ -20,18 +20,15 @@ class myLineEdit(QtGui.QLineEdit):
 
 
 class AD9910client(QtGui.QWidget):
-
     def __init__(self,reactor,cnx=None):
         super(AD9910client, self).__init__()
+        self.tracking = False
         self.reactor = reactor
         self.cnx = cnx
         self.connect()
-        reactor.callLater(5,self.initializeGUI)
-        reactor.callLater(6,self.restore_GUI)
-        reactor.callLater(7,self.start_loops)
-        #self.initializeGUI()
-        #self.restore_GUI()
-        #self.start_loops()
+        self.initializeGUI()
+        self.restore_GUI()
+
 
     def start_loops(self):
         loop1 = LoopingCall(self.update_console)
@@ -43,11 +40,14 @@ class AD9910client(QtGui.QWidget):
             self.cnx = connection()
             yield self.cnx.connect()
         self.context = yield self.cnx.context()
-        #yield self.setupListeners()
+        yield self.setupListeners()
+        self.start_loops()
 
     def initializeGUI(self):
         frequencypanel = self.make_frequencypanel()
         console = self.make_consolepanel()
+        console.setHidden(True)
+        self.consolebutton.pressed.connect(lambda: console.setHidden(not console.isHidden()))
         layout = QtGui.QVBoxLayout()
         layout.addWidget(frequencypanel)
         layout.addWidget(console)
@@ -62,10 +62,10 @@ class AD9910client(QtGui.QWidget):
         self.trackingnum = QtGui.QSpinBox()
         trackinglabel = QtGui.QLabel('From ParameterVault (0. indexed)')
         self.PLLled = LEDindicator('PLL',offcolor='Red')
-
+        self.consolebutton = QtGui.QPushButton('Console')
         self.trackingnum.setObjectName('Trackingnum')
         self.frequency.setObjectName('Frequency')
-
+        
         self.frequency.setRange(0,1000)
         self.frequency.setSingleStep(1e-6)
         self.frequency.setSuffix(' MHz')
@@ -74,23 +74,25 @@ class AD9910client(QtGui.QWidget):
         self.frequency.editingFinished.connect(lambda :self.set_frequency(self.frequency.value()))
 
         tracking.stateChanged.connect(self.tracking_checked)
-
-
+        
 
         trackinglayout = QtGui.QHBoxLayout()
         trackinglayout.addWidget(tracking)
         trackinglayout.addWidget(self.trackingnum)
         trackinglayout.addWidget(trackinglabel)
-        trackinglayout.setSpacing(0)
+        trackinglayout.setSpacing(1)
+        trackinglayout.addStretch()
 
         freqlayout = QtGui.QHBoxLayout()
         freqlayout.addWidget(frequencylabel)
         freqlayout.addWidget(self.frequency)
+        freqlayout.addWidget(self.PLLled)
+        freqlayout.addWidget(self.consolebutton)
+        freqlayout.addStretch()
 
         layout = QtGui.QVBoxLayout()
         layout.addLayout(freqlayout)
         layout.addLayout(trackinglayout)
-        layout.addWidget(self.PLLled)
         widget.setLayout(layout)
         return widget
 
@@ -105,7 +107,7 @@ class AD9910client(QtGui.QWidget):
         self.commandline.onspecialkeypress.connect(self.commandline_keypress)
 
         self.console.setReadOnly(True)
-
+        
         layout = QtGui.QVBoxLayout()
         layout.addWidget(Instructionlabel)
         layout.addWidget(self.console)
@@ -126,7 +128,7 @@ class AD9910client(QtGui.QWidget):
             text = self.commandlinehistory[self.commandlinehistoryindex]
             self.commandline.setText(text)
         elif key == Qt.Key_Down:
-            if self.commandlinehistoryindex < (len(self.commandlinehistoryindex)-1):
+            if self.commandlinehistoryindex < (len(self.commandlinehistory)-1):
                 self.commanlinehistoryindex += 1
             text = self.commandlinehistory[self.commandlinehistoryindex]
             self.commandline.setText(text)
@@ -135,7 +137,7 @@ class AD9910client(QtGui.QWidget):
     def write_serial(self,text):
         server = yield self.cnx.get_server('AD9910server')
         yield server.write(str(text)+'\r')
-        self.console.append(text+'\n')
+        self.console.append(text)
 
     @inlineCallbacks
     def update_console(self):
@@ -204,19 +206,21 @@ class AD9910client(QtGui.QWidget):
             self.trackingnum.setStyleSheet("background-color:white")
 
     @inlineCallbacks
-    def follow_parameterserver(self,x):     
-        server = yield self.cnx.get_server('ParameterVault')
-        value = [1,1]#yield pv.get_parameter('Raman','announce')
-        freq = float(value[self.trackingnum.value])
-        self.frequency.setText(freq)
-        self.set_frequency(freq)
+    def follow_parameterserver(self,x,data):
+        if self.tracking:
+            server = yield self.cnx.get_server('ParameterVault')
+            value = yield server.get_parameter('Raman','announce')
+            freq = float(value[self.trackingnum.value()]) 
+            self.frequency.setValue(freq)
+            self.set_frequency(freq)
+        
 
 
     @inlineCallbacks
     def setupListeners(self):
         server = yield self.cnx.get_server('ParameterVault')
+        yield server.addListener(listener = self.follow_parameterserver, source = server.ID, ID = 112345, context = self.context)
         yield server.signal__parameter_change(112345, context = self.context)
-        yield server.addListener(listener = self.follow_parameterserver, source = None, ID = 112345, context = self.context)
       
 
 if __name__=="__main__":
