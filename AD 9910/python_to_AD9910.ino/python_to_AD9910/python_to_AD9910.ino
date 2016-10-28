@@ -67,17 +67,22 @@ void loop() {
             case 'U':{
                 Update_io();
                 counter = 0;
-                Serial.write("U.\n");
+                Serial.write("U.");
                 break;
             }
             case 'S':{
                 Reset_io();
                 counter = 0;
-                Serial.write("S.\n");
+                Serial.write("S.");
                 break;
             }
             case 'W':{
                 reading = false;
+                counter = 0;
+                break;
+            }
+            case 'M':{
+                Reset_chip();
                 counter = 0;
                 break;
             }
@@ -176,9 +181,9 @@ void Reset_io(){
 void read_PLLlock(){
     int val = digitalRead(PLL_LOCK);
     if (val > 0){
-      Serial.write("1P.\n");
+      Serial.write("1P.");
     }
     else{
-      Serial.write("0P.\n");
+      Serial.write("0P.");
     }
 }

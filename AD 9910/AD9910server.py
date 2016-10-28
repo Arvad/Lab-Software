@@ -16,6 +16,7 @@ timeout = 20
 from labrad.server import LabradServer, setting, Signal
 from twisted.internet import reactor
 from twisted.internet.defer import inlineCallbacks
+from twisted.internet.task import LoopingCall
 import serial
 import time
 
@@ -33,7 +34,6 @@ class AD9910(LabradServer):
     def setup(self):
         self.serial_connection()
 
-
     def initContext(self, c):
         """Initialize a new context object."""
         self.listeners.add(c.ID)
@@ -41,31 +41,29 @@ class AD9910(LabradServer):
     def expireContext(self, c):
         self.listeners.remove(c.ID)   
         
-    def getOtherListeners(self,c):
+    def getOtherListeners(self):
         notified = self.listeners.copy()
-        notified.remove(c.ID)
         return notified
-
+ 
     def serial_connection(self):
         self.ser = serial.Serial('COM3',19200,timeout=10)
-        print self._read()
-
+ 
     @setting(1,'Set Frequency')
     def set_frequency(self,c,freq):
-        Fmax = 1100.
+        Fmax = 1100. # Max frecuency
+        if freq<0 or freq > Fmax/2:
+            return
         FTW = int(round(2**32*(freq/Fmax)))
         data = ''
-        data += 'E' #Mode
-        data += '07' #address
+        data += 'W' #Mode
+        data += '0e' #address
         data += 'ffffffff' #amplitude scaling - is actually disabled, but is set high
         for i in range(3,-1,-1):
             data += '{:02x}'.format((FTW//256**i)%256)
         data += '\r'
         self.ser.write(data)
-        print data
-        #self.ser.write('U\r')
-        #print self._read()
-        
+        self.ser.write('U\r') #UpdateIO command
+
     @setting(2, 'Read serial', returns='s')
     def read_serial(self,c):
         return self._read()
@@ -73,24 +71,21 @@ class AD9910(LabradServer):
     @setting(3, 'Read PLL', returns='b')
     def read_pll(self,c):
         self.ser.write('P')
-        back = self._read()
-        back = back.split('P.')
-        return bool(int(back[len(back)-2][-1]))
+        back = self.ser.read(3)
+        back = bool(back[0])
+        return back
 
-    @setting(4, 'Write to register')
-    def write_to_register(self,c,data):
-        self.ser.write(data)
-        return self._read()
+    @setting(4, 'Write',string='s')
+    def write(self,c,string):
+        self.ser.write(string)
     
     @setting(5, 'Update IO')
     def update_IO(self,c):
         self.ser.write('U\r')
-        return self._read()
     
     @setting(6, 'Reset IO')
     def reset_IO(self,c):
         self.ser.write('S\r')
-        return self._read()
 
     def _read(self):
         data = ""
