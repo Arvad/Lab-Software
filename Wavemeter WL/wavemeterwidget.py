@@ -11,7 +11,7 @@ __email__ = "Arvad91@gmail.com"
 
 
 from PyQt4 import QtGui
-from PyQt4.QtCore import QTimer, pyqtSignal, pyqtSlot, Qt, QEvent, QSettings, QVariant
+from PyQt4.QtCore import QTimer, pyqtSignal, pyqtSlot, Qt, QEvent, QSettings, QVariant, QSize, QObject
 import pyqtgraph as pg
 import sys
 from os import listdir
@@ -25,7 +25,7 @@ import datetime
 import inspect
 import labrad
 
-debug = False
+debug = True
 
 def sqr(a): return a*a
 
@@ -59,12 +59,16 @@ def buttonstyle(color, **kwargs):
     return string
 
 
+
+
 class wavemeterwidget(QtGui.QMainWindow):
     
     def __init__(self):
         super(wavemeterwidget,self).__init__()
         if not debug:
             self.wavemeter = wlm()
+        if debug:
+            print 'Debug mode'
         self.setWindowTitle("Wavemeter widget")
         self.timer = QTimer()    
         self.timer.timeout.connect(self.update)
@@ -83,6 +87,8 @@ class wavemeterwidget(QtGui.QMainWindow):
             self.channellist.append(channelinformation(i+1))
         self.initialize()
         self.setStyleSheet(buttonstyle('deepskyblue'))
+        sys.stdout = EmittingStream(textWritten = self.write_output)
+        sys.stderr = EmittingStream(textWritten = self.write_output)
             
     #Creating the different GUI elements of the main window and joining them together
     def initialize(self):
@@ -322,7 +328,11 @@ class wavemeterwidget(QtGui.QMainWindow):
                 self.errorserver = None
                 self.connection.disconnect()
                 self.connection = None
-           
+    
+    def write_output(self,text):
+        self.stdoutputfield.moveCursor(QtGui.QTextCursor.End)
+        self.stdoutputfield.insertPlainText( text )
+
 
 
     ########################################################
@@ -386,8 +396,11 @@ class wavemeterwidget(QtGui.QMainWindow):
         widget = QtGui.QTabWidget()
         generalpanel = self.makeGeneralPanel()
         regulationpanel = self.makeRegulationPanel()
+        self.stdoutputfield = QtGui.QTextEdit()
+        self.stdoutputfield.setReadOnly(True)
         widget.addTab(generalpanel,'General')
         widget.addTab(regulationpanel,'Regulation')
+        widget.addTab(self.stdoutputfield,'StdOutput')
         dockwidget.setWidget(widget)
         dockwidget.setFeatures(QtGui.QDockWidget.DockWidgetFloatable | QtGui.QDockWidget.DockWidgetMovable)
         dockwidget.setHidden(True) #So it starts hidden
@@ -912,6 +925,18 @@ class wavemeterwidget(QtGui.QMainWindow):
 ########################################################################
 
 ########################################################
+#######    Stream class for stdout and stderr
+########################################################
+
+class EmittingStream(QObject):
+    textWritten = pyqtSignal(str)
+    
+    def write(self,text):
+        self.textWritten.emit(str(text))
+
+
+
+########################################################
 #######    Information storing class
 ########################################################
 class channelinformation:
@@ -1328,7 +1353,26 @@ class wlm:
     def setRegulation(self,channel,val):
         self.setDev(ctypes.c_long(channel),ctypes.c_double(val))
 
+
+def logo():
+    logostring = ["40 40 11 1","N  c #000000",".  c #FF1800","+  c #BAB9B9","@  c #FF9600","#  c #B8B3B3","$  c #DCD9D9","!  c #F6FF00","&  c #1EFF00","*  c #00DEFF","=  c #FFFFFF","-  c #CC00FF",
+                  "NNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNN","NNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNN","NNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNN","NNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNN","NNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNN...N",
+                  "NNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNN....N","NNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNN.....NN","NNNNNNNNNNNNNNNNNNN++NNNNNNNNNNN....NNNN","NNNNNNNNNNNNNNNNNNN++NNNNNNNNN.....NN@@N","NNNNNNNNNNNNNNNNNN++++NNNNNN......NN@@@N",
+                  "NNNNNNNNNNNNNNNNNN+N#+NNNN.....NNN@@@@@N","NNNNNNNNNNNNNNNNN+$NN++N......N@@@@@@@@N","NNNNNNNNNNNNNNNNN+$NN#+..@@@@@@@@@@@@N!N","NNNNNNNNNNNNNNNN+$NNNN++@@@@@@!!!!!!!!!N","NNNNNNNNNNNNNNNN+$NNNN#+!!!!!!!!!!!!!!!N",
+                  "NNNNNNNNNNNNNNN+$NNNNNN++&&&&&&&!!!!!!!N","NNNNNNNNNNNNNNN+$NNNNNN#+***NN&&&&&NNN!N","NNNNNNNNNNNNN=+$NNNNNNNN++N***NN&&&&&&&N","NNNNNNNNNNN===+$NNNNNNNN#+--N***NNN&&&&N","NNNNNNNNN====+$NNNNNNNNNN++---N***NNN&&N",
+                  "NNNNNNN======+$NNNNNNNNNN#+NN--NN****N&N","NNNNN=======+$NNNNNNNNNNNN++NN---N****NN","NN=========N+$NNNNNNNNNNNN#+NNNN--N****N","N=========N+$NNNNNNNNNNNNNN++NNNN---***N","N=======NNN+$NNNNNNNNNNNNNN#+NNNNN----NN",
+                  "N=====NNNN+$NNNNNNNNNNNNNNNN++NNNNN----N","N==NNNNNNN+$NNNNNNNNNNNNNNNN#+NNNNNN---N","NNNNNNNNN+$NNNNNNNNNNNNNNNNNN++NNNNNNNNN","NNNNNNNNN+$NNNNNNNNNNNNNNNNNN#+NNNNNNNNN","NNNNNNNN+$NNNNNNNNNNNNNNNNNNNN++NNNNNNNN",
+                  "NNNNNNNN+$NNNNNNNNNNNNNNNNNNNN#+NNNNNNNN","NNNNNNN+$NNNNNNNNNNNNNNNNNNNNNN++NNNNNNN","NNNNNNN+$NNNNNNNNNNNNNNNNNNNNNN#+NNNNNNN","NNNNNN+$NNNNNNNNNNNNNNNNNNNNNNNN++NNNNNN","NNNNNN+$NNNNNNNNNNNNNNNNNNNNNNNN#+NNNNNN",
+                  "NNNNNN++++++++++++++++++++++++++++NNNNNN","NNNNNN++++++++++++++++++++++++++++NNNNNN","NNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNN","NNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNN","NNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNN"]
+    return logostring
+
 if __name__=="__main__":
     a = QtGui.QApplication( [] )
+
+
+    a.setWindowIcon(QtGui.QIcon(QtGui.QPixmap(logo())))
+    import ctypes
+    myappid = u'mycompany.myproduct.subproduct.version' # arbitrary string
+    ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
     pl = wavemeterwidget()
     sys.exit(a.exec_())
