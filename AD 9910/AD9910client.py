@@ -22,6 +22,7 @@ class myLineEdit(QtGui.QLineEdit):
 class AD9910client(QtGui.QWidget):
     def __init__(self,reactor,cnx=None):
         super(AD9910client, self).__init__()
+        self.setWindowTitle('AD9910 556')
         self.tracking = False
         self.reactor = reactor
         self.cnx = cnx
@@ -67,9 +68,9 @@ class AD9910client(QtGui.QWidget):
         self.frequency.setObjectName('Frequency')
         
         self.frequency.setRange(0,1000)
-        self.frequency.setSingleStep(1e-6)
+        self.frequency.setSingleStep(1e-3)
         self.frequency.setSuffix(' MHz')
-        self.frequency.setDecimals(6)
+        self.frequency.setDecimals(4)
 
         self.frequency.editingFinished.connect(lambda :self.set_frequency(self.frequency.value()))
 
@@ -135,13 +136,13 @@ class AD9910client(QtGui.QWidget):
 
     @inlineCallbacks
     def write_serial(self,text):
-        server = yield self.cnx.get_server('AD9910server')
+        server = yield self.cnx.get_server('DDS556')
         yield server.write(str(text)+'\r')
         self.console.append(text)
 
     @inlineCallbacks
     def update_console(self):
-        server = yield self.cnx.get_server('AD9910server')
+        server = yield self.cnx.get_server('DDS556')
         data = yield server.read_serial()
         if len(data) > 0:
             self.console.append(data)
@@ -149,12 +150,12 @@ class AD9910client(QtGui.QWidget):
 
     @inlineCallbacks
     def set_frequency(self,freq):
-        server = yield self.cnx.get_server('AD9910server')
+        server = yield self.cnx.get_server('DDS556')
         yield server.set_frequency(freq)
 
     @inlineCallbacks
     def update_pll(self):
-        server = yield self.cnx.get_server('AD9910server')
+        server = yield self.cnx.get_server('DDS556')
         b = yield server.read_pll()
         self.PLLled.setState(b)
         
