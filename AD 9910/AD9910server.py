@@ -15,8 +15,9 @@ timeout = 20
 
 from labrad.server import LabradServer, setting, Signal
 from twisted.internet import reactor
-from twisted.internet.defer import inlineCallbacks
+from twisted.internet.defer import DeferredLock, inlineCallbacks, returnValue
 from twisted.internet.task import LoopingCall
+from twisted.internet.threads import deferToThread
 import serial
 import time
 
@@ -26,9 +27,10 @@ class AD9910(LabradServer):
     """
     Hardware Server for communicating with the AD9910 chip on the evaluation board
     """
-    name = "AD9910server"
+    name = "DDS556"
     def initServer(self):
         self.listeners = set()
+        self.inCommunication = DeferredLock()
         self.setup()
     
     def setup(self):
@@ -46,10 +48,11 @@ class AD9910(LabradServer):
         return notified
  
     def serial_connection(self):
-        self.ser = serial.Serial('COM3',19200,timeout=10)
+        self.ser = serial.Serial('COM4',19200,timeout=10)
  
     @setting(1,'Set Frequency')
     def set_frequency(self,c,freq):
+        self.inCommunication.acquire()
         Fmax = 1100. # Max frecuency
         if freq<0 or freq > Fmax/2:
             return
@@ -63,31 +66,45 @@ class AD9910(LabradServer):
         data += '\r'
         self.ser.write(data)
         self.ser.write('U\r') #UpdateIO command
-
+        self.inCommunication.release()
+        
+    @inlineCallbacks
     @setting(2, 'Read serial', returns='s')
     def read_serial(self,c):
-        return self._read()
-
+        self.inCommunication.acquire()
+        data = yield deferToThread(self._read)
+        self.inCommunication.release()
+        returnValue(data)
+    @inlineCallbacks
     @setting(3, 'Read PLL', returns='b')
     def read_pll(self,c):
+        self.inCommunication.acquire()
         self.ser.write('P')
-        back = self.ser.read(3)
+        back = yield deferToThread(self.ser.read,3)
         back = bool(back[0])
-        return back
+        self.inCommunication.release()
+        returnValue(back)
 
     @setting(4, 'Write',string='s')
     def write(self,c,string):
+        self.inCommunication.acquire()
         self.ser.write(string)
+        self.inCommunication.release()
     
     @setting(5, 'Update IO')
     def update_IO(self,c):
+        self.inCommunication.acquire()
         self.ser.write('U\r')
+        self.inCommunication.release()
     
     @setting(6, 'Reset IO')
     def reset_IO(self,c):
+        self.inCommunication.acquire()
         self.ser.write('S\r')
+        self.inCommunication.release()
 
     def _read(self):
+        self.inCommunication.acquire()
         data = ""
         data += self.ser.read(1)
         while self.ser.in_waiting:
