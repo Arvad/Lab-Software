@@ -19,10 +19,12 @@ class serverclient(QtGui.QWidget):
         super(serverclient, self).__init__()
         self.setWindowTitle("Labrad WatchDog")
         self.labradpath = 'C:\Users\Katori\Desktop\Labrad\LabRAD-v1.1.3.exe'
-        self.highfinesspath = 'C:\Program Files\HighFinesse\Wavelength Meter WS Ultimate 1362\wlm_wsu.exe'
-        self.wavemeterwidgetpath ='C:\Users\Katori\Desktop\Wavemeter\wavemeterwidget.pyw'
         self.serverlist = [('DDS556','C:\Users\Katori\Desktop\Labrad\servers\AD9910556\AD9910server.py'),
                            ('ParameterVault','C:\Users\Katori\Desktop\Labrad\servers\ParameterVault\parameter_vault.py')]
+        
+        self.applicationlist = [('High Finess','C:\Program Files\HighFinesse\Wavelength Meter WS Ultimate 1362\wlm_wsu.exe'),
+                                ('Wavemeter widget','C:\Users\Katori\Desktop\Wavemeter\wavemeterwidget.pyw'),
+                                ('556 AD9910','C:\Users\Katori\Desktop\Labrad\clients\AD9910 556\AD9910client.pyw'),                             ]
         
         self.serverwidgetlist = []
         self.applicationprocesslist = []
@@ -31,14 +33,14 @@ class serverclient(QtGui.QWidget):
         sys.stderr = EmittingStream(textWritten = self.write_output)
 
     def initializeGUI(self):
-        initpanel = self.make_initializationwidget()
+        apppanel = self.make_applicationwidget()
         serverpanel = self.make_serverpanel()
         ownoutput = self.make_ownputputwidget()
         mainlayout = QtGui.QHBoxLayout()
 
-        mainlayout.addWidget(initpanel)
-        mainlayout.addWidget(serverpanel)
         mainlayout.addWidget(ownoutput)
+        mainlayout.addWidget(serverpanel)
+        mainlayout.addWidget(apppanel)
         
         self.setLayout(mainlayout)
         self.show()
@@ -58,33 +60,31 @@ class serverclient(QtGui.QWidget):
         serverframe.setLayout(serverlayout)
         return serverframe
 
-    def make_initializationwidget(self):
+    def make_applicationwidget(self):
         widget = QtGui.QFrame()
-        label = QtGui.QLabel('Initialization steps')
-        labradbutton = QtGui.QPushButton('1. Start labrad manager')
-        allserversbutton = QtGui.QPushButton('2. Start all servers')
-        highfinessbutton = QtGui.QPushButton('3. Start High Finesse Wavemeter')
-        wavemeterwidgetbutton = QtGui.QPushButton('4. Start Wavemeter widget')
-
-        labradbutton.pressed.connect(lambda :self.start_program(self.labradpath))
-        allserversbutton.pressed.connect(self.start_all_servers)
-        highfinessbutton.pressed.connect(lambda: self.start_program(self.highfinesspath))
-        wavemeterwidgetbutton.pressed.connect(lambda : self.start_program(self.wavemeterwidgetpath))
-
         layout = QtGui.QVBoxLayout()
-        layout.addWidget(labradbutton)
-        layout.addWidget(allserversbutton)
-        layout.addWidget(highfinessbutton)
-        layout.addWidget(wavemeterwidgetbutton)
+        label = QtGui.QLabel('Application launcher')
+        layout.addWidget(label)
+        for name,path in self.applicationlist:
+            abutton = QtGui.QPushButton(name)  
+            abutton.pressed.connect(lambda who = path:self.start_program(who))
+            layout.addWidget(abutton)
+        layout.addStretch()    
         widget.setLayout(layout)
         return widget
          
     def make_ownputputwidget(self):
         thiswidget = QtGui.QFrame()
+        labradbutton = QtGui.QPushButton('1. Start labrad manager')
+        allserversbutton = QtGui.QPushButton('2. Start all servers')
         label = QtGui.QLabel('ServerWatchDog output')
         self.textfield = QtGui.QTextEdit()
         self.textfield.setReadOnly(True)
+        labradbutton.pressed.connect(lambda :self.start_program(self.labradpath))
+        allserversbutton.pressed.connect(self.start_all_servers)
         layout = QtGui.QVBoxLayout()
+        layout.addWidget(labradbutton)
+        layout.addWidget(allserversbutton)
         layout.addWidget(label)
         layout.addWidget(self.textfield)
         thiswidget.setLayout(layout)
@@ -92,9 +92,6 @@ class serverclient(QtGui.QWidget):
 
     def start_program(self,path):
         process = QProcess()
-        print os.path.dirname(path)
-        process.setWorkingDirectory(os.path.dirname(path))
-        print process.workingDirectory()
         if os.path.splitext(path)[1] == '.pyw':
             process.startDetached('pythonw',[path],os.path.dirname(path))
         else:
