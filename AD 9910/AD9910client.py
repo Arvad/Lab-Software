@@ -57,22 +57,31 @@ class AD9910client(QtGui.QWidget):
 
     def make_frequencypanel(self):
         widget = QtGui.QWidget()
-        self.frequency = QtGui.QDoubleSpinBox()
-        frequencylabel = QtGui.QLabel('Frequency')
+        self.inputfrequency = QtGui.QDoubleSpinBox()
+        self.paramfrequency = QtGui.QLineEdit()
+        self.outputfrequency = QtGui.QLineEdit()
+        inputfrequencylabel = QtGui.QLabel('User input Frequency')
+        paramfrequencylabel = QtGui.QLabel('Parameter vault Frequency')
+        outputfrequencylabel = QtGui.QLabel('Output Frequency')
+
         tracking = QtGui.QCheckBox('Tracking Parameter number: ')
         self.trackingnum = QtGui.QSpinBox()
         trackinglabel = QtGui.QLabel('From ParameterVault (0. indexed)')
         self.PLLled = LEDindicator('PLL',offcolor='Red')
         self.consolebutton = QtGui.QPushButton('Console')
         self.trackingnum.setObjectName('Trackingnum')
-        self.frequency.setObjectName('Frequency')
+        self.inputfrequency.setObjectName('Frequency')
         
-        self.frequency.setRange(0,1000)
-        self.frequency.setSingleStep(1e-3)
-        self.frequency.setSuffix(' MHz')
-        self.frequency.setDecimals(4)
+        self.inputfrequency.setRange(0,1000)
+        self.inputfrequency.setSingleStep(1e-3)
+        self.inputfrequency.setSuffix(' MHz')
+        self.inputfrequency.setDecimals(4)
+        self.paramfrequency.setReadOnly(True)
+        self.paramfrequency.setStyleSheet("background-color:lightgrey")
+        self.outputfrequency.setReadOnly(True)
+        self.outputfrequency.setStyleSheet("background-color:lightgrey")
 
-        self.frequency.editingFinished.connect(lambda :self.set_frequency(self.frequency.value()))
+        self.inputfrequency.editingFinished.connect(lambda :self.set_frequency(self.inputfrequency.value()))
 
         tracking.stateChanged.connect(self.tracking_checked)
         
@@ -84,12 +93,15 @@ class AD9910client(QtGui.QWidget):
         trackinglayout.setSpacing(1)
         trackinglayout.addStretch()
 
-        freqlayout = QtGui.QHBoxLayout()
-        freqlayout.addWidget(frequencylabel)
-        freqlayout.addWidget(self.frequency)
-        freqlayout.addWidget(self.PLLled)
-        freqlayout.addWidget(self.consolebutton)
-        freqlayout.addStretch()
+        freqlayout = QtGui.QGridLayout()
+        freqlayout.addWidget(inputfrequencylabel,0,0)
+        freqlayout.addWidget(self.inputfrequency,0,1)
+        freqlayout.addWidget(paramfrequencylabel,1,0)
+        freqlayout.addWidget(self.paramfrequency,1,1)
+        freqlayout.addWidget(outputfrequencylabel,2,0)
+        freqlayout.addWidget(self.outputfrequency,2,1)
+        freqlayout.addWidget(self.PLLled,3,0)
+        freqlayout.addWidget(self.consolebutton,3,1)
 
         layout = QtGui.QVBoxLayout()
         layout.addLayout(freqlayout)
@@ -152,6 +164,7 @@ class AD9910client(QtGui.QWidget):
     def set_frequency(self,freq):
         server = yield self.cnx.get_server('DDS556')
         yield server.set_frequency(freq)
+        self.outputfrequency.setText(freq)
 
     @inlineCallbacks
     def update_pll(self):
@@ -195,24 +208,26 @@ class AD9910client(QtGui.QWidget):
     def tracking_checked(self,state):
         if state == 2: #being checked
             self.tracking = True
-            self.frequency.setReadOnly(True)
             self.frequency.setStyleSheet("background-color:lightgrey")
             self.trackingnum.setReadOnly(True)
             self.trackingnum.setStyleSheet("background-color:lightgrey")
         else:
             self.tracking = False
-            self.frequency.setReadOnly(False)
             self.trackingnum.setReadOnly(False)
             self.frequency.setStyleSheet("background-color:white")
             self.trackingnum.setStyleSheet("background-color:white")
 
     @inlineCallbacks
     def follow_parameterserver(self,x,data):
-        if self.tracking:
+        try:
             server = yield self.cnx.get_server('ParameterVault')
             value = yield server.get_parameter('Raman','announce')
-            freq = float(value[self.trackingnum.value()]) 
-            self.frequency.setValue(freq)
+            freq = float(value[self.trackingnum.value()])
+        except Exception,e:
+            print e
+            freq = 0.0
+        self.paramfrequency.setText(freq)
+        if self.tracking:
             self.set_frequency(freq)
         
 
@@ -223,9 +238,24 @@ class AD9910client(QtGui.QWidget):
         yield server.addListener(listener = self.follow_parameterserver, source = server.ID, ID = 112345, context = self.context)
         yield server.signal__parameter_change(112345, context = self.context)
       
+def logo():
+    logostring = ["40 40 4 1","   c None",".  c #FFFFFF","+  c #000000","@  c #FF1800",
+                  "........................................","........................................","...++++++......++++++.......++++++++....","...+++++++.....+++++++.....++++++++++...","...++....++....++....++....+++.....++...",
+                  "...++.....++...++.....++...+++..........","...++......+...++......+....+++.........","...++......++..++......++....+++........","...++......++..++......++.....+++.......","...++......++..++......++......+++......",
+                  "...++......++..++......++.......+++.....","...++......+...++......+.........+++....","...++.....++...++.....++..........+++...","...++....++....++....++....++.....+++...","...+++++++.....+++++++.....++++++++++...",
+                  "...++++++......++++++.......++++++++....","........................................","........................................","........................................","..........+..................+..........",
+                  ".........+@+................+@+.........","........+@@@+..............+@@@+........",".......+@@@@@+............+@@@@@+.......","........+@@@+..............+@@@+........",".....+...+@+...+........+...+@+...+.....",
+                  "....+@+.+@@@+.+@+......+@+.+@@@+.+@+....","...+@@@+@@@@@+@@@+....+@@@+@@@@@+@@@+...","..+@@@@@@@@@@@@@@@+..+@@@@@@@@@@@@@@@+..","...+@@@+@@@@@+@@@+....+@@@+@@@@@+@@@+...","....+@+.+@@@+.+@+......+@+.+@@@+.+@+....",
+                  ".....+...+@+...+........+...+@+...+.....","........+@@@+..............+@@@+........",".......+@@@@@+............+@@@@@+.......","........+@@@+..............+@@@+........",".........+@+................+@+.........",
+                  "..........+..................+..........","........................................","........................................","........................................","........................................"]
+    return logostring
 
 if __name__=="__main__":
     a = QtGui.QApplication( [] )
+    a.setWindowIcon(QtGui.QIcon(QtGui.QPixmap(logo())))
+    import ctypes
+    myappid = u'mycompany.myproduct.subproduct.version' # arbitrary string
+    ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
     import qt4reactor
     qt4reactor.install()
     from twisted.internet import reactor
