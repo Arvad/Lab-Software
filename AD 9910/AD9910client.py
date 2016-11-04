@@ -4,11 +4,41 @@ from twisted.internet.defer import inlineCallbacks
 from twisted.internet.task import LoopingCall
 from connection import connection
 import time
+import datetime
 
 import sys
 from LEDindicator import LEDindicator
 
-debug = True
+
+
+def buttonstyle(color, **kwargs):
+    if 'textcolor' in kwargs:
+        txtcolor = kwargs['textcolor']
+    else:
+        txtcolor = 'black'
+    backgroundcolor = QtGui.QColor(color)    
+    string =  "QPushButton {\n"
+    string +="color: {:};\n".format(txtcolor)
+    string +="border: 5px ;\n"
+    string +="border-radius: 5px;\n"
+    string +="padding: 5px;\n"
+    string +="background: qradialgradient(cx: 0.3, cy: -0.4,\n"
+    string +="fx: 0.3, fy: -0.4,\n"
+    string +="radius: 1.35, stop: 0 {:}, stop: 1 {:});\n".format(backgroundcolor.name(),backgroundcolor.darker().name())
+    string +="min-width: 80px;\n"
+    string +="max-width: 280px;\n"
+    string +="}\n"
+    string +="\n"
+    string +="QPushButton:hover {\n"
+    string +="background: qradialgradient(cx: 0.4, cy: 0.5,\n"
+    string +="fx: 0.3, fy: -0.4,\n"
+    string +="radius: 1.35, stop: 0 {:}, stop: 1 {:});\n".format(backgroundcolor.name(),backgroundcolor.lighter().name())
+    string +="}\n"
+    string +="\n"
+    string +="QPushButton:checked {\n"
+    string +="background: {:}\n".format(backgroundcolor.lighter().name())
+    string +="}"
+    return string
 
 class myLineEdit(QtGui.QLineEdit):
     onspecialkeypress = pyqtSignal(int)
@@ -31,6 +61,7 @@ class AD9910client(QtGui.QWidget):
         self.connect()
         self.initializeGUI()
         self.restore_GUI()
+        self.setStyleSheet(buttonstyle('deepskyblue'))
 
 
     def start_loops(self):
@@ -60,8 +91,8 @@ class AD9910client(QtGui.QWidget):
     def make_frequencypanel(self):
         widget = QtGui.QWidget()
         self.inputfrequency = QtGui.QDoubleSpinBox()
-        self.paramfrequency = QtGui.QLineEdit()
-        self.outputfrequency = QtGui.QLineEdit('12')
+        self.paramfrequency = QtGui.QLineEdit('- MHz')
+        self.outputfrequency = QtGui.QLineEdit('- MHz')
         inputfrequencylabel = QtGui.QLabel('User input Frequency')
         paramfrequencylabel = QtGui.QLabel('Parameter vault Frequency')
         outputfrequencylabel = QtGui.QLabel('Output Frequency')
@@ -69,7 +100,7 @@ class AD9910client(QtGui.QWidget):
         commitbutton = QtGui.QPushButton('Commit to history')
         historybutton = QtGui.QPushButton('Show history')
 
-        tracking = QtGui.QCheckBox('Tracking Parameter number: ')
+        tracking = QtGui.QCheckBox('Tracking Parameter: ')
         self.trackingnum = QtGui.QSpinBox()
         trackinglabel = QtGui.QLabel('From ParameterVault (0. indexed)')
         self.PLLled = LEDindicator('PLL',offcolor='Red')
@@ -80,7 +111,7 @@ class AD9910client(QtGui.QWidget):
         self.inputfrequency.setRange(0,1000)
         self.inputfrequency.setSingleStep(1e-3)
         self.inputfrequency.setSuffix(' MHz')
-        self.inputfrequency.setDecimals(4)
+        self.inputfrequency.setDecimals(6)
         self.paramfrequency.setReadOnly(True)
         self.paramfrequency.setStyleSheet("background-color:lightgrey")
         self.outputfrequency.setReadOnly(True)
@@ -93,30 +124,23 @@ class AD9910client(QtGui.QWidget):
         tracking.stateChanged.connect(self.tracking_checked)
         
 
+        layout = QtGui.QGridLayout()
+        layout.addWidget(inputfrequencylabel,0,0)
+        layout.addWidget(self.inputfrequency,0,1)
+        layout.addWidget(paramfrequencylabel,1,0)
+        layout.addWidget(self.paramfrequency,1,1)
+        layout.addWidget(outputfrequencylabel,2,0)
+        layout.addWidget(self.outputfrequency,2,1)
+        layout.addWidget(historybutton,3,0)
+        layout.addWidget(commitbutton,3,1)
+        layout.addWidget(self.PLLled,4,0)
+        layout.addWidget(self.consolebutton,4,1)
+        layout.addWidget(tracking,5,0)
+        layout.addWidget(self.trackingnum,5,1)
+        layout.addWidget(trackinglabel,6,0,1,2)
+        
 
-        trackinglayout = QtGui.QHBoxLayout()
-        trackinglayout.addWidget(tracking)
-        trackinglayout.addWidget(self.trackingnum)
-        trackinglayout.addWidget(trackinglabel)
-        trackinglayout.setSpacing(1)
-        trackinglayout.addStretch()
-
-        freqlayout = QtGui.QGridLayout()
-        freqlayout.addWidget(inputfrequencylabel,0,0)
-        freqlayout.addWidget(self.inputfrequency,0,1)
-        freqlayout.addWidget(paramfrequencylabel,1,0)
-        freqlayout.addWidget(self.paramfrequency,1,1)
-        freqlayout.addWidget(outputfrequencylabel,2,0)
-        freqlayout.addWidget(self.outputfrequency,2,1)
-        freqlayout.addWidget(historybutton,3,0)
-        freqlayout.addWidget(commitbutton,3,1)
-        freqlayout.addWidget(self.PLLled,4,0)
-        freqlayout.addWidget(self.consolebutton,4,1)
-
-
-        layout = QtGui.QVBoxLayout()
-        layout.addLayout(freqlayout)
-        layout.addLayout(trackinglayout)
+        layout.setSpacing(1)
         widget.setLayout(layout)
         return widget
 
@@ -140,9 +164,11 @@ class AD9910client(QtGui.QWidget):
         return widget
 
     def commit_value(self):
-        date,ok = QtGui.QInputDialog.getText(self,'Commit value to history','Commit value "{:}" with the following date:'.format(self.outputfrequency.text()))
+        timestamp = time.time()
+        date = datetime.datetime.fromtimestamp(timestamp).strftime("%Y/%m/%d %H%M%S")
+        comment,ok = QtGui.QInputDialog.getText(self,'Commit value to history','Commit value "{:}" with a comment?'.format(self.outputfrequency.text()))
         if ok:
-            self.history.append(date+'@'+self.outputfrequency.text())
+            self.history.append(self.outputfrequency.text()+'MHz@'+date + '-' + comment)
 
     def show_history(self):
         self.textfield = QtGui.QTextEdit()
@@ -187,7 +213,7 @@ class AD9910client(QtGui.QWidget):
     def set_frequency(self,freq):
         server = yield self.cnx.get_server('DDS556')
         yield server.set_frequency(freq)
-        self.outputfrequency.setText(freq)
+        self.outputfrequency.setText('{:.06f} MHz'.format(freq))
 
     @inlineCallbacks
     def update_pll(self):
@@ -254,7 +280,7 @@ class AD9910client(QtGui.QWidget):
         except Exception,e:
             print e
             freq = 0.0
-        self.paramfrequency.setText(freq)
+        self.paramfrequency.setText('{:.06f} MHz'.format(freq))
         if self.tracking:
             self.set_frequency(freq)
         
@@ -290,6 +316,6 @@ if __name__=="__main__":
     Widget = AD9910client(reactor)
     Widget.show()
     reactor.run()
-
+    sys.exit(a.exec_())
 
 
