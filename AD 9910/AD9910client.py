@@ -3,6 +3,7 @@ from PyQt4.QtCore import QTimer, pyqtSignal, pyqtSlot, Qt, QEvent, QSettings, QV
 from twisted.internet.defer import inlineCallbacks
 from twisted.internet.task import LoopingCall
 from connection import connection
+import time
 
 import sys
 from LEDindicator import LEDindicator
@@ -26,6 +27,7 @@ class AD9910client(QtGui.QWidget):
         self.tracking = False
         self.reactor = reactor
         self.cnx = cnx
+        self.history = []
         self.connect()
         self.initializeGUI()
         self.restore_GUI()
@@ -59,10 +61,13 @@ class AD9910client(QtGui.QWidget):
         widget = QtGui.QWidget()
         self.inputfrequency = QtGui.QDoubleSpinBox()
         self.paramfrequency = QtGui.QLineEdit()
-        self.outputfrequency = QtGui.QLineEdit()
+        self.outputfrequency = QtGui.QLineEdit('12')
         inputfrequencylabel = QtGui.QLabel('User input Frequency')
         paramfrequencylabel = QtGui.QLabel('Parameter vault Frequency')
         outputfrequencylabel = QtGui.QLabel('Output Frequency')
+
+        commitbutton = QtGui.QPushButton('Commit to history')
+        historybutton = QtGui.QPushButton('Show history')
 
         tracking = QtGui.QCheckBox('Tracking Parameter number: ')
         self.trackingnum = QtGui.QSpinBox()
@@ -81,10 +86,13 @@ class AD9910client(QtGui.QWidget):
         self.outputfrequency.setReadOnly(True)
         self.outputfrequency.setStyleSheet("background-color:lightgrey")
 
+        commitbutton.pressed.connect(self.commit_value)
+        historybutton.pressed.connect(self.show_history)
         self.inputfrequency.editingFinished.connect(lambda :self.set_frequency(self.inputfrequency.value()))
 
         tracking.stateChanged.connect(self.tracking_checked)
         
+
 
         trackinglayout = QtGui.QHBoxLayout()
         trackinglayout.addWidget(tracking)
@@ -100,8 +108,11 @@ class AD9910client(QtGui.QWidget):
         freqlayout.addWidget(self.paramfrequency,1,1)
         freqlayout.addWidget(outputfrequencylabel,2,0)
         freqlayout.addWidget(self.outputfrequency,2,1)
-        freqlayout.addWidget(self.PLLled,3,0)
-        freqlayout.addWidget(self.consolebutton,3,1)
+        freqlayout.addWidget(historybutton,3,0)
+        freqlayout.addWidget(commitbutton,3,1)
+        freqlayout.addWidget(self.PLLled,4,0)
+        freqlayout.addWidget(self.consolebutton,4,1)
+
 
         layout = QtGui.QVBoxLayout()
         layout.addLayout(freqlayout)
@@ -127,6 +138,18 @@ class AD9910client(QtGui.QWidget):
         layout.addWidget(self.commandline)
         widget.setLayout(layout)
         return widget
+
+    def commit_value(self):
+        date,ok = QtGui.QInputDialog.getText(self,'Commit value to history','Commit value "{:}" with the following date:'.format(self.outputfrequency.text()))
+        if ok:
+            self.history.append(date+'@'+self.outputfrequency.text())
+
+    def show_history(self):
+        self.textfield = QtGui.QTextEdit()
+        self.textfield.setReadOnly(True)
+        for asetting in self.history:
+            self.textfield.append(asetting)
+        self.textfield.show()
 
     def commandline_keypress(self,key):
         if key == Qt.Key_Enter or key == Qt.Key_Return:
@@ -181,7 +204,10 @@ class AD9910client(QtGui.QWidget):
             if settings.contains(name):
                 value= settings.value(name).toDouble()[0]
                 aspinbox.setValue(value)
-        
+
+        if settings.contains('History'):
+            self.history = settings.value('History',[],str)
+
         if settings.contains('windowposition'):
             self.move(settings.value("windowposition").toPoint());
         if settings.contains('windowsize'):
@@ -201,6 +227,8 @@ class AD9910client(QtGui.QWidget):
             name = asplitter.objectName()
             value = asplitter.sizes()
             settings.setValue(name,value)
+
+        settings.setValue('History',self.history)
         settings.sync()
 
         self.reactor.stop()
