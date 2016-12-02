@@ -11,7 +11,7 @@ __email__ = "Arvad91@gmail.com"
 
 
 from PyQt4 import QtGui
-from PyQt4.QtCore import QTimer, pyqtSignal, pyqtSlot, Qt, QEvent, QSettings, QVariant, QSize, QObject
+from PyQt4.QtCore import QTimer, pyqtSignal, pyqtSlot, Qt, QEvent, QSettings, QVariant, QSize, QObject, QVariant
 import pyqtgraph as pg
 import sys
 from os import listdir
@@ -25,7 +25,7 @@ import datetime
 import inspect
 import labrad
 
-debug = True
+debug = False
 
 def sqr(a): return a*a
 
@@ -80,6 +80,10 @@ class wavemeterwidget(QtGui.QMainWindow):
         self.logging = False
         self.connection = None
         self.errorserver = None
+        self.referencechannel = None
+        self.referencevalue = None
+        self.currentreferencefreq = None
+        self.doReference = False
         if not os.path.isdir("./wavemeterlogging"):
             os.mkdir("wavemeterlogging")
         self.logfile = None
@@ -89,7 +93,7 @@ class wavemeterwidget(QtGui.QMainWindow):
         self.setStyleSheet(buttonstyle('deepskyblue'))
         sys.stdout = EmittingStream(textWritten = self.write_output)
         sys.stderr = EmittingStream(textWritten = self.write_output)
-            
+
     #Creating the different GUI elements of the main window and joining them together
     def initialize(self):
         mainwidget = QtGui.QWidget()
@@ -111,7 +115,10 @@ class wavemeterwidget(QtGui.QMainWindow):
         resetallbutton = QtGui.QPushButton('Reset All')
         resetwarningbutton = QtGui.QPushButton('Reset Warning')
         autoscaletimebutton = QtGui.QPushButton('Autoscale Time')
-        logwarning = QtGui.QCheckBox('Log warnings')
+        scrolltimebutton  = QtGui.QPushButton('Scroll Time')
+        scrolltimevalue = QtGui.QSpinBox()
+
+        logwarning = QtGui.QCheckBox()
         logstatuslabel = QtGui.QLabel()
         self.warningtext = QtGui.QTextEdit()
         self.warningtext.setMaximumHeight(resetwarningbutton.sizeHint().height()*3)
@@ -124,20 +131,27 @@ class wavemeterwidget(QtGui.QMainWindow):
         stopbutton.setStyleSheet(buttonstyle('red',textcolor = 'white'))
         stopbutton.clicked.connect(lambda bool: startbutton.setChecked(not startbutton.isChecked()))
         startbutton.clicked.connect(lambda bool: stopbutton.setChecked(not stopbutton.isChecked()))
+        scrolltimebutton.setCheckable(True)
+        scrolltimebutton.setChecked(False)
+        scrolltimevalue.setSuffix(' s')
+        scrolltimevalue.setRange(1,10000)
+        scrolltimevalue.setObjectName('Scrolltimevalue')
 
         panellayout = QtGui.QGridLayout()
         panellayout.addWidget(logwarning,0,0,1,1)
-        panellayout.addWidget(logstatuslabel,0,1,1,5)
+        panellayout.addWidget(logstatuslabel,0,1,1,3)
         panellayout.addWidget(self.warningtext,1,0,3,4)
-        panellayout.addWidget(startbutton,1,4)
-        panellayout.addWidget(stopbutton,1,5)
-        panellayout.addWidget(configbutton,2,4)
-        panellayout.addWidget(resetallbutton,2,5)
-        panellayout.addWidget(resetwarningbutton,3,4)
-        panellayout.addWidget(autoscaletimebutton,3,5)
+        panellayout.addWidget(startbutton,0,4)
+        panellayout.addWidget(stopbutton,0,5)
+        panellayout.addWidget(configbutton,1,4)
+        panellayout.addWidget(resetallbutton,1,5)
+        panellayout.addWidget(resetwarningbutton,2,4)
+        panellayout.addWidget(autoscaletimebutton,2,5)
+        panellayout.addWidget(scrolltimebutton,3,5)
+        panellayout.addWidget(scrolltimevalue,3,4)
         buttonspanel.setLayout(panellayout)
-        panellayout.setSpacing(0)
-        panellayout.setContentsMargins(0,0,0,0)
+        panellayout.setSpacing(1)
+        panellayout.setContentsMargins(1,1,1,1)
 
         ########################################################
         ####### Join all widgets together    
@@ -159,7 +173,9 @@ class wavemeterwidget(QtGui.QMainWindow):
         configbutton.pressed.connect(self.config_pressed)
         resetallbutton.pressed.connect(self.resetall_pressed)
         resetwarningbutton.pressed.connect(self.resetwarning_pressed)
-        autoscaletimebutton.pressed.connect(self.autoscalex_pressed)
+        autoscaletimebutton.clicked.connect(self.autoscalex_pressed)
+        scrolltimebutton.clicked.connect(self.scrolltime_pressed)
+        scrolltimevalue.valueChanged.connect(self.scrolltime_changed)
         self.warningtext.contextMenuEvent = self.warningtext_contextmenu
         logwarning.stateChanged.connect( lambda state=1: self.logwarning_toggled(state,logstatuslabel))
 
@@ -224,6 +240,11 @@ class wavemeterwidget(QtGui.QMainWindow):
                             self.channellist[ind].siglim = state
                     except Exception,e:
                         print e
+        if settings.contains('MainSize'):
+            self.resize(settings.value('MainSize').toSize())
+        if settings.contains('MainPos'):   
+            self.move(settings.value('MainPos').toPoint())
+
 
     def closeEvent(self,event):
         settings = QSettings('settings.ini',QSettings.IniFormat)
@@ -247,6 +268,9 @@ class wavemeterwidget(QtGui.QMainWindow):
             name = aBox.objectName()
             state = aBox.currentIndex()
             settings.setValue(name,state)
+
+        settings.setValue('MainSize',self.size())
+        settings.setValue('MainPos',self.pos())
             
         settings.sync()
 
@@ -272,7 +296,7 @@ class wavemeterwidget(QtGui.QMainWindow):
     def resetwarning_pressed(self):
         for i in self.channellist:
             i.plotwidget.setbackground('default')
-            i.readingswidget.setbackground('default')
+            i.readingswidget.reading.setProperty('warning',False)
      
     #Resets all plots   
     def resetall_pressed(self):
@@ -289,9 +313,9 @@ class wavemeterwidget(QtGui.QMainWindow):
         self.settingswidget.setHidden(not self.settingswidget.isHidden())
 
         # Scales all xaxis to autoscaling
-    def autoscalex_pressed(self):
+    def autoscalex_pressed(self,state):
         plotlist = []
-        for achannel in self.channellist: 
+        for achannel in self.channellist:
             if achannel.plotwidget.showfreq:
                 plotlist.append(achannel.plotwidget.freqplot)
             if achannel.plotwidget.showsig:
@@ -300,6 +324,14 @@ class wavemeterwidget(QtGui.QMainWindow):
         for aplot in plotlist:
             aplot.getViewBox().enableAutoRange(aplot.getViewBox().XAxis)
 
+    def scrolltime_pressed(self,state):
+        for achannel in self.channellist:
+            achannel.plotwidget.scrolling = state 
+
+    def scrolltime_changed(self,value):
+        for achannel in self.channellist:
+            achannel.plotwidget.scrolltime = value
+            
     def warningtext_contextmenu(self,event):
         self.menu = QtGui.QMenu(self)
         clearAction = QtGui.QAction('clear',self)
@@ -354,6 +386,7 @@ class wavemeterwidget(QtGui.QMainWindow):
     def makeReadingswidget(self):
         self.expotimereading = readingsbox(99)
         dockwidget = QtGui.QDockWidget('Readings')
+        dockwidget.setObjectName('Readingsdockwidget')
         widget = QtGui.QWidget()
         toolbar = QtGui.QToolBar()
         toolbar.setStyleSheet('QToolButton::checked {border: inset; border-width: 1px}')
@@ -393,6 +426,7 @@ class wavemeterwidget(QtGui.QMainWindow):
     #Main widget
     def makeSettingswidget(self):
         dockwidget = QtGui.QDockWidget('Settings')
+        dockwidget.setObjectName('Settingsdockwidget')
         widget = QtGui.QTabWidget()
         generalpanel = self.makeGeneralPanel()
         regulationpanel = self.makeRegulationPanel()
@@ -562,8 +596,7 @@ class wavemeterwidget(QtGui.QMainWindow):
             ilabel = QtGui.QLabel('I')
             dlabel = QtGui.QLabel('D')
             outputlabel = QtGui.QLabel('Output')
-            senslabel = QtGui.QLabel('Sensitivity')
-            senslabel2 = QtGui.QLabel('(V/GHz)')
+            senslabel = QtGui.QLabel('(V/GHz)')
             targetvalue = QtGui.QDoubleSpinBox()
             pvalue = QtGui.QSpinBox()
             ivalue = QtGui.QSpinBox()
@@ -571,10 +604,13 @@ class wavemeterwidget(QtGui.QMainWindow):
             sensitivity = QtGui.QDoubleSpinBox()
             outputchannel = QtGui.QSpinBox()
             regulate = QtGui.QPushButton("Chan {:}".format(i+1))
+            reference = QtGui.QCheckBox('Ref')
             steplimitvalue = QtGui.QSpinBox()
             steplimitlabel = QtGui.QLabel('Steplimit')
-            polaritylabel = QtGui.QLabel('Polarity')
             polaritysign = MyComboBox()
+            manuallabel = QtGui.QLabel('Manual')
+            manualvalue = QtGui.QDoubleSpinBox()
+
             #Modify elements
             targetvalue.setDecimals(6)
             targetvalue.setRange(0,1000)
@@ -582,10 +618,14 @@ class wavemeterwidget(QtGui.QMainWindow):
             outputchannel.setRange(1,8)
             outputchannel.setValue(i+1)
             steplimitvalue.setRange(1,1000)
-            steplimitvalue.setSuffix(' MHz')
+            steplimitvalue.setSuffix(' KHz')
             steplimitvalue.setSingleStep(1)
-            steplimitvalue.setValue(10)
+            steplimitvalue.setValue(1000)
             polaritysign.addItems(['Neg','Pos'])
+            manualvalue.setSingleStep(0.5)
+            manualvalue.setRange(-10,10)
+            manualvalue.setSuffix(' V')
+            manualvalue.setDecimals(1)
             for abox in [pvalue, ivalue, dvalue]:
                 abox.setSingleStep(5)
                 abox.setRange(0,500)
@@ -600,6 +640,7 @@ class wavemeterwidget(QtGui.QMainWindow):
             outputchannel.setObjectName('Channel{:}outputchannel'.format(i+1))
             steplimitvalue.setObjectName('Channel{:}steplimit'.format(i+1))
             polaritysign.setObjectName('Channel{:}polarity'.format(i+1))
+            manualvalue.setObjectName('Channel{:}manualvalue'.format(i+1))
 
             # Connect events
             pvalue.valueChanged.connect(lambda val, who= i: setattr(self.channellist[who],'pvalue',val))
@@ -610,6 +651,8 @@ class wavemeterwidget(QtGui.QMainWindow):
             regulate.toggled.connect(lambda state, who=i: self.regulate_toggled(state,who))
             steplimitvalue.valueChanged.connect(lambda val, who=i: setattr(self.channellist[who],'steplimitvalue',val))
             polaritysign.currentIndexChanged.connect(lambda val,who=i: setattr(self.channellist[who],"pospolarity",val))
+            manualvalue.valueChanged.connect(lambda val, who=i: setattr(self.channellist[who],'manualvalue',val))
+            reference.stateChanged.connect(lambda state, who = i: setattr(self.channellist[who],'regulationref',False if state == 0 else True))
             # Add to layout grid
             framelayout.addWidget(targetlabel,0,1)
             framelayout.addWidget(targetvalue,1,1)
@@ -624,15 +667,48 @@ class wavemeterwidget(QtGui.QMainWindow):
             framelayout.addWidget(steplimitlabel,0,5)
             framelayout.addWidget(steplimitvalue,1,5)
             framelayout.addWidget(senslabel,0,6)
-            framelayout.addWidget(senslabel2,1,6)
-            framelayout.addWidget(sensitivity,2,6)
-            framelayout.addWidget(polaritylabel,1,7)
-            framelayout.addWidget(polaritysign,2,7)
+            framelayout.addWidget(sensitivity,1,6)
+            framelayout.addWidget(polaritysign,2,6)
+            framelayout.addWidget(manuallabel,0,7)
+            framelayout.addWidget(manualvalue,1,7)
+            framelayout.addWidget(reference,2,7)
             framelayout.setAlignment(Qt.AlignCenter)
             miniwidget.setLayout(framelayout)
             miniwidget.setFrameStyle(QtGui.QFrame.Panel | QtGui.QFrame.Sunken)
             layout.addWidget(regulate,i,0)
             layout.addWidget(miniwidget,i,1)
+
+        calibrationwidget = QtGui.QFrame()
+        refchannellabel = QtGui.QLabel('Reference channel')
+        refchannel = QtGui.QSpinBox()
+        refvaluelabel = QtGui.QLabel('Reference  value')
+        refvalue = QtGui.QDoubleSpinBox()
+        self.usereferencebutton = QtGui.QPushButton('Use reference')
+        self.usereferencebutton.setStyleSheet(buttonstyle('green'))
+
+        refchannel.setRange(1,8)
+        refvalue.setDecimals(6)
+        refvalue.setRange(0,1000)
+        refvalue.setSingleStep(0.000001)
+        refvalue.setObjectName('Referencevalue')
+        self.usereferencebutton.setCheckable(True)
+        self.usereferencebutton.setChecked(False)
+        refchannel.setObjectName('ReferenceChannel')
+
+
+        self.usereferencebutton.clicked.connect(lambda state:self.use_reference_clicked(state,refvalue.value(),refchannel.value()))
+
+
+        caliblayout=QtGui.QHBoxLayout()
+        caliblayout.addWidget(refchannellabel)
+        caliblayout.addWidget(refchannel)
+        caliblayout.addWidget(refvaluelabel)
+        caliblayout.addWidget(refvalue)
+        caliblayout.addWidget(self.usereferencebutton)
+        caliblayout.addStretch()
+        calibrationwidget.setLayout(caliblayout)
+
+        layout.addWidget(calibrationwidget,i+1,0,1,2)
         widget.setLayout(layout)
         return widget
 
@@ -706,6 +782,17 @@ class wavemeterwidget(QtGui.QMainWindow):
             self.logging = True
             fnamefield.setStyleSheet("background-color:lightgrey")
 
+    def use_reference_clicked(self,state,refvalue,refchannel):
+        if state:
+            self.doReference = True
+            self.referencevalue = refvalue
+            self.referencechannel = refchannel
+        else:
+            self.doReference = False
+            self.referencevalue = None
+            self.referencechannel = None
+            self.currentreferencefreq = None
+
     
 ########################################################################
 #########                                                      #########
@@ -739,21 +826,44 @@ class wavemeterwidget(QtGui.QMainWindow):
                     freq = self.wavemeter.getFrequency(i+1)
                     expo = self.wavemeter.getFullExposure(i+1)
                     amp = self.wavemeter.getAmplitudes(i+1)
+                    regfreq = freq
+                    if (i+1) == self.referencechannel:
+                        self.currentreferencefreq = freq
                     if channel.regulate and channel.regulationsignal is not None:
                         sig = channel.regulationsignal
+                        if all([self.doReference,channel.regulationref,self.referencevalue,self.currentreferencefreq]):
+                            diff = self.referencevalue - self.currentreferencefreq
+                            if abs(diff)> 0.000010: #if excursion larger than 10 MHz, lattice probabely unlocked and the referencing should unlock
+                                self.use_reference_clicked(False,None,None)
+                                self.usereferencebutton.setChecked(False)
+                            else:
+                                regfreq = freq + diff
+                                channel.readingswidget.reading.setProperty('reference',True)
+                        else:
+                            channel.readingswidget.reading.setProperty('reference',False)
                     else:
                         sig = self.wavemeter.getDeviation(i+1)
                     if freq != channel.prefreq:
                         updated = True
                 #If channel is not used, set everything to zero.
                 else: 
-                    freq = 0; sig = 0;  expo = 0; amp = (0,0)
+                    freq = 0.; sig = 0.;  expo = 0.; amp = (0.,0.)
                 totalexptime += expo
             else:
                 used = True
                 updated = True
                 freq = random.random() + self.debugint + 100
                 sig=random.random() +2
+                regfreq = freq
+                if (i+1) == self.referencechannel:
+                    self.currentreferencefreq = freq
+                if all([self.doReference,channel.regulationref,self.referencevalue,self.currentreferencefreq]):
+                    diff = self.referencevalue - self.currentreferencefreq
+                    regfreq = freq + diff
+                    channel.readingswidget.reading.setProperty('reference',True)
+                else:
+                    channel.readingswidget.reading.setProperty('reference',False)
+
                 amp = (random.random(),random.random())
                 expo = random.random()+20
                 self.debugint += 0.001
@@ -812,29 +922,29 @@ class wavemeterwidget(QtGui.QMainWindow):
                     warning = True
                     if prefreq > minfreq:
                         crossingwarning = True
-                        tmpstr +=tmptxt + ": Freq {:} went below limit ({:.9})\n".format(i+1,freq)
+                        tmpstr +=tmptxt + ": Freq {:} went below limit ({:.9})\n".format(i+1,float(freq))
  
                 if channel.freqlim and maxfreq < freq:
                     warning = True
                     if prefreq<maxfreq:
                         crossingwarning = True
-                        tmpstr += tmptxt +": Freq {:} went above limit ({:.9})\n".format(i+1,freq)
+                        tmpstr += tmptxt +": Freq {:} went above limit ({:.9})\n".format(i+1,float(freq))
                     
                 if channel.siglim and minsig  > sig and presig > minsig:
                     warning = True
                     if presig>minsig:
                         crossingwarning = True
-                        tmpstr += tmptxt + ": Sig {:} went below limit ({:.9})\n".format(i+1,sig) 
+                        tmpstr += tmptxt + ": Sig {:} went below limit ({:.9})\n".format(i+1,float(sig)) 
                 if channel.siglim and maxsig  < sig:
                     warning = True
                     if presig < maxsig:
                         crossingwarning = True
-                        tmpstr += tmptxt + ": Sig {:} went below limit ({:.9})\n".format(i+1,sig) 
+                        tmpstr += tmptxt + ": Sig {:} went below limit ({:.9})\n".format(i+1,float(sig)) 
 
                 #Color plot and reading red
                 if warning:
                     channel.plotwidget.setbackground('r')
-                    channel.readingswidget.setbackground('red')
+                    channel.readingswidget.reading.setProperty('warning',True)
                     if crossingwarning:
                         tmpstr = tmpstr[:-1]
                         self.warningtext.append(tmpstr)
@@ -859,8 +969,8 @@ class wavemeterwidget(QtGui.QMainWindow):
                 channel.newminmax = True
                 channel.plotwidget.update(self.timestamp,channel)
 
-            if channel.regulate and used:
-                self.updateregulation(channel,self.timestamp,freq)
+            if used and updated:
+                self.updateregulation(channel,self.timestamp,regfreq)
         
         #Placed out here because its not part of the 8 channel loop
         if not self.expotimereading.isHidden():
@@ -876,46 +986,52 @@ class wavemeterwidget(QtGui.QMainWindow):
     ########################################################
     def updateregulation(self,channel,timestamp,freq):
         signum = channel.channel # wavemeter function wants 1-8 not 0-7
-        p = channel.pvalue
-        i = channel.ivalue
-        d = channel.dvalue
-        target = channel.targetvalue
-        sensitivity = channel.sensitivity
-        steplimitMHz = channel.steplimitvalue
-        interr = channel.integratederror
-        lasterror = channel.lasterror
-        pospol = channel.pospolarity
-        firstglitch = channel.firstglitch
-        error = freq-target
-        pval = p * error 
-        ival = i * (interr + error)
-        dval = d * (error-lasterror)
+        if not channel.regulate:
+            if not debug:
+                    self.wavemeter.setRegulation(signum,channel.manualvalue*1000)
+        else:   
+            p = channel.pvalue
+            i = channel.ivalue
+            d = channel.dvalue
+            target = channel.targetvalue
+            sensitivity = channel.sensitivity
+            steplimitGHz = channel.steplimitvalue*1e-6 #to convert to from KHz to GHz
+            interr = channel.integratederror
+            lasterror = channel.lasterror
+            pospol = channel.pospolarity
+            NGlitch = channel.NGlitches
+            error = freq-target
 
-        steplimitV = steplimitMHz/1000.*sensitivity*1000
-
-        diff = lasterror-error
-        if abs(diff) > steplimitV:
-            if firstglitch:
-                error = 0
-                firstglitch = False
+            diff = lasterror-error
+            if abs(diff) > steplimitGHz:
+                if NGlitch < 30:
+                    channel.readingswidget.set_limit_indicator('hit')
+                    NGlitch += 1
+                    error = steplimitGHz * ( -1 if error < 0 else 1)
+                else:
+                    channel.readingswidget.set_limit_indicator('cap')
             else:
-                error = steplimitV * ( -1 if error < 0 else 1)
-        else:
-            firstglitch = True
-        
-        regulationsignal = (pval + ival + dval) * sensitivity * 1000 #since sensitivty is in V/GHz
+                NGlitch = 0
+                channel.readingswidget.set_limit_indicator('clear')
 
-        channel.integratederror += error
-        channel.lasterror = error
-        
-        #Truncate to +- 10000 mV
-        if abs(regulationsignal) > 10000:
-            regulationsignal = 10000 if regulationsignal > 0 else -10000
-        if not pospol:
-            regulationsignal = regulationsignal* -1
-        channel.regulationsignal = regulationsignal
-        if not debug:
-            self.wavemeter.setRegulation(signum,regulationsignal)
+            pval = p * error 
+            ival = i * (interr + error)
+            dval = d * (error-lasterror)
+            
+            regulationsignal = (pval + ival + dval) * sensitivity * 1000 #since sensitivty is in V/GHz
+
+            channel.integratederror += error
+            channel.lasterror = error
+            channel.NGlitches = NGlitch
+            
+            #Truncate to +- 10000 mV
+            if abs(regulationsignal) > 10000.:
+                regulationsignal = 10000. if regulationsignal > 0 else -10000.
+            if not pospol:
+                regulationsignal = regulationsignal* -1.
+            channel.regulationsignal = regulationsignal
+            if not debug:
+                self.wavemeter.setRegulation(signum,regulationsignal)
 
 ########################################################################
 #########                                                      #########
@@ -971,7 +1087,9 @@ class channelinformation:
         self.lasterror = 0; self.integratederror = 0
         self.pospolarity = 0
         self.regulationsignal = 0
-        self.firstglitch = True # Used to make the PID loop ignore single value large changes
+        self.manualvalue = 0
+        self.NGlitches = 0 # Used to make the PID loop ignore glitches, while still quickly adapting to large lockpoint changes
+        self.regulationref = False #Bool used to indicate if the regulation should usethe calibration and reference channel to adjust the lockpoint to account for wavemeter reading wrong
 
 ########################################################
 #######    Plotting class, which also stores all the data
@@ -985,6 +1103,8 @@ class signalwindow(pg.GraphicsLayoutWidget):
         self.channel = channel
         self.showfreq = False
         self.showsig = False
+        self.scrolling = False
+
         textitem = pg.TextItem('Channel '+str(self.channel)) #Channellabel
         font = QtGui.QFont()
         font.setWeight(99)
@@ -992,7 +1112,11 @@ class signalwindow(pg.GraphicsLayoutWidget):
         self.setContentsMargins(0,0,0,0)
         self.scene().addItem(textitem)
         self.freqplot = pg.PlotItem(axisItems={'bottom':DateAxis(orientation='bottom')})
+
+        self.freqplot.setDownsampling(mode='peak')
+        self.freqplot.setClipToView(True)
         self.sigplot = pg.PlotItem(axisItems={'bottom':DateAxis(orientation='bottom')})
+        #self.sigplot.sigRangeChanged.connect(self.range_changed)
         self.initialize()
    
     #Initializes all buffers
@@ -1002,10 +1126,12 @@ class signalwindow(pg.GraphicsLayoutWidget):
         self.timedata = [None] * self.highresbuffer
         self.freqmindata = [None] * self.highresbuffer; self.freqmaxdata = [None] * self.highresbuffer
         self.sigmindata  = [None] * self.highresbuffer;  self.sigmaxdata = [None] * self.highresbuffer
+        self.firsttime = None
         self.timedatalongterm = []; 
         self.freqmindatalongterm = []; self.freqmaxdatalongterm = []; 
         self.sigmindatalongterm  = [];  self.sigmaxdatalongterm = []        
         self.counter = 0
+        self.scrolltime = 1000
 
     #Used to color the background of the plots in case of warnings
     def setbackground(self,colorstring):
@@ -1067,13 +1193,17 @@ class signalwindow(pg.GraphicsLayoutWidget):
         self.freqmaxdata[self.counter] = channel.freqmax
         self.sigmindata[self.counter] = channel.sigmin
         self.sigmaxdata[self.counter] = channel.sigmax
+        if self.firsttime is None:
+            self.firsttime = timestamp
         if self.showfreq:
             self.freqplot.clear() #Clear plot of previous items, to prevent accumulating points
             one = pg.PlotCurveItem(self.timedatalongterm + self.timedata[:self.counter],self.freqmindatalongterm + self.freqmindata[:self.counter],pen='w')
             two = pg.PlotCurveItem(self.timedatalongterm + self.timedata[:self.counter],self.freqmaxdatalongterm + self.freqmaxdata[:self.counter],pen='w')
             self.freqplot.addItem(one)
             self.freqplot.addItem(two)
-            #If limits are used, draw lines to indicate them
+            if self.scrolling:
+                self.freqplot.setXRange(max(timestamp-self.scrolltime,self.firsttime),timestamp)
+
             if channel.freqlim: 
                 self.freqplot.addItem(pg.InfiniteLine(channel.freqlimmin,angle=0,pen=pg.mkPen('w',style=Qt.DashLine)))
                 self.freqplot.addItem(pg.InfiniteLine(channel.freqlimmax,angle=0,pen=pg.mkPen('w',style=Qt.DashLine)))
@@ -1083,6 +1213,9 @@ class signalwindow(pg.GraphicsLayoutWidget):
             two = pg.PlotCurveItem(self.timedatalongterm + self.timedata[:self.counter],self.sigmaxdatalongterm + self.sigmaxdata[:self.counter],pen='y')
             self.sigplot.addItem(one)
             self.sigplot.addItem(two)
+            if self.scrolling:
+                self.sigplot.setXRange(max(timestamp-self.scrolltime,self.firsttime),timestamp)
+
             #If limits are used, draw lines to indicate them
             if channel.siglim:
                 self.sigplot.addItem(pg.InfiniteLine(channel.siglimmin,angle=0,pen=pg.mkPen('y',style=Qt.DashLine)))
@@ -1163,8 +1296,13 @@ class readingsbox(QtGui.QFrame):
             self.reading = QtGui.QLabel('399.442424')
             self.exposurelabel = QtGui.QLabel('32 ms')
             self.amplabel = QtGui.QLabel('0%/0%')
-        self.default_style = self.label.styleSheet()
+        self.backgroundcolor = self.palette().color(QtGui.QPalette.Base).name()
         self.reading.setFrameStyle(QtGui.QFrame.Panel | QtGui.QFrame.Sunken)
+        self.regulationlimitindicator = QtGui.QWidget()
+        self.regulationlimitindicator.setAutoFillBackground(True)
+        self.regulationlimitindicator.setMaximumSize(12,12)
+        self.regulationlimitindicator.setMinimumSize(12,12)
+        self.set_limit_indicator('clear')
         
         #Create handlers
         self.label.mouseDoubleClickEvent = self.change_label
@@ -1176,6 +1314,7 @@ class readingsbox(QtGui.QFrame):
         labellayout.addWidget(self.label)
         labellayout.addWidget(self.exposurelabel)
         labellayout.addWidget(self.amplabel)
+        labellayout.addWidget(self.regulationlimitindicator)
         labelpanel.setLayout(labellayout)
 
         layout = QtGui.QVBoxLayout()
@@ -1185,13 +1324,14 @@ class readingsbox(QtGui.QFrame):
         layout.addWidget(self.reading,Qt.AlignTop)
         self.setLayout(layout)
         self.reading.setSizePolicy(QtGui.QSizePolicy.Ignored, QtGui.QSizePolicy.Ignored)
-
-    #Used to color the background of the reading in the case of a warning
-    def setbackground(self,colorstring):
-        if colorstring == 'default':
-            self.reading.setStyleSheet(self.default_style)
-        else:
-            self.reading.setStyleSheet("QLabel {background-color:"+colorstring + "}")
+        self.reading.setProperty('warning',False)
+        self.reading.setProperty('reference',False)
+        self.reading.setStyleSheet("""
+            QLabel[warning="true"] {background-color: red}
+            QLabel[warning="false"] {background-color:palette(base)}
+            QLabel[reference="true"] {color: green}
+            QLabel[reference="false"] {color: black};
+            """)
 
     #Used to make the reading resize to larger fontsizes
     def resizeEvent(self, event):
@@ -1230,6 +1370,21 @@ class readingsbox(QtGui.QFrame):
             self.reading.setText("         ")
         else:
             self.reading.setText("{:.6f}".format(value))
+        self.reading.style().unpolish(self.reading)
+        self.reading.style().polish(self.reading)
+
+    def set_limit_indicator(self,state):
+        pal = QtGui.QPalette()
+        if state == 'clear':
+            pal.setColor(self.regulationlimitindicator.backgroundRole(), QtGui.QColor('Light Green'))
+        elif state == 'hit':
+            pal.setColor(self.regulationlimitindicator.backgroundRole(), QtGui.QColor('Red'))
+        elif state == 'cap':
+            pal.setColor(self.regulationlimitindicator.backgroundRole(), QtGui.QColor('Orange'))
+            
+        self.regulationlimitindicator.setPalette(pal)
+        self.update()
+
 
     #Updates the exposuretime label
     def update_expos(self,value):
